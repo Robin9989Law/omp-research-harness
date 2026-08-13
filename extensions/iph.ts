@@ -514,6 +514,18 @@ async function readWorkflow(root: string): Promise<WorkflowState | undefined> {
 	return readJsonObject<WorkflowState>(path.join(root, WORKFLOW_FILE));
 }
 
+export async function inspectStopLock(root: string): Promise<{
+	active: boolean;
+	details: Record<string, unknown> | null;
+}> {
+	const lockPath = path.join(root, STOP_LOCK_FILE);
+	if (!existsSync(lockPath)) return { active: false, details: null };
+	return {
+		active: true,
+		details: (await readJsonObject<Record<string, unknown>>(lockPath)) ?? null,
+	};
+}
+
 export function frozenDecisionArtifacts(state: WorkflowState | undefined): string[] {
 	if (!Array.isArray(state?.decision_log)) return [];
 	const frozen = new Set<string>();
@@ -1442,12 +1454,15 @@ export default function iphExtension(pi: ExtensionAPI) {
 			if (!state) return toolResult(blockedResult(root, "workflow_state.json is unreadable"));
 			const lifecycle = await inspectLifecycleState(root, stageForState(state));
 			const plan = transitionPlanForState(state);
+			const stopLock = await inspectStopLock(root);
 			return toolResult({
 				status: lifecycle.issues.length > 0 ? "INVALID" : "READY",
 				exitCode: lifecycle.issues.length > 0 ? 1 : 0,
 				stdout: JSON.stringify({
 					researchRoot: root,
 					validation: "NOT_RUN_READ_ONLY_SNAPSHOT",
+					stopLockActive: stopLock.active,
+					stopLock: stopLock.details,
 					workflowId: state.workflow_id,
 					lifecycleStage: stageForState(state),
 					lifecyclePointerStage: lifecycle.value?.active_stage ?? null,
@@ -1496,6 +1511,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 			const state = await readWorkflow(root);
 			if (!state) return toolResult(blockedResult(root, "workflow_state.json is unreadable"));
 			const plan = transitionPlanForState(state);
+			const stopLock = await inspectStopLock(root);
 			if (!plan) {
 				if (text(state.active_state) === "N0_AUDIT" && ["N0-1", "N0-2"].includes(text(state.novelty_level))) {
 					return toolResult({
@@ -1503,6 +1519,9 @@ export default function iphExtension(pi: ExtensionAPI) {
 						exitCode: 0,
 						stdout: JSON.stringify({
 							activeState: state.active_state,
+							resumeState: state.resume_state,
+							stopLockActive: stopLock.active,
+							stopLock: stopLock.details,
 							noveltyLevel: state.novelty_level,
 							terminal: true,
 							target: null,
@@ -1520,6 +1539,10 @@ export default function iphExtension(pi: ExtensionAPI) {
 				exitCode: 0,
 				stdout: JSON.stringify({
 					activeState: state.active_state,
+					resumeState: state.resume_state,
+					stopLockActive: stopLock.active,
+					stopLock: stopLock.details,
+					blockedReasons: state.blocked_reasons,
 					nextRequiredAction: state.next_required_action,
 					...plan,
 					specialistDispatch: plan.specialist ? {

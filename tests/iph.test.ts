@@ -10,6 +10,7 @@ import {
 	EXIT_STATUS,
 	executableText,
 	findResearchRoot,
+	inspectStopLock,
 	mutableArtifactConflicts,
 	recordSubagentLifecycle,
 	requiredSpecialistForTarget,
@@ -45,6 +46,25 @@ describe("session-stop control", () => {
 	test("continues once for a repairable INVALID workflow without a STOP lock", () => {
 		expect(shouldContinueSessionStop({ exitCode: 1 }, { active_state: "SCOPE_LOCK" }, false)).toBeTrue();
 		expect(shouldContinueSessionStop({ exitCode: 0 }, { active_state: "SCOPE_LOCK" }, false)).toBeFalse();
+	});
+});
+
+describe("read-only STOP visibility", () => {
+	test("reports physical lock presence and parsed details without validating", async () => {
+		const root = await mkdtemp(path.join(tmpdir(), "iph-stop-visibility-"));
+		try {
+			expect(await inspectStopLock(root)).toEqual({ active: false, details: null });
+			await writeFile(
+				path.join(root, ".workflow_stop.lock"),
+				JSON.stringify({ exit_code: 2, effective_state: "PRIOR_CLAIM_DRAIN" }),
+			);
+			expect(await inspectStopLock(root)).toEqual({
+				active: true,
+				details: { exit_code: 2, effective_state: "PRIOR_CLAIM_DRAIN" },
+			});
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 });
 
