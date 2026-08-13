@@ -78,9 +78,9 @@ jobs:
             exit 1
           fi
 
-      - name: Publish dry run
+      - name: Pack dry run
         if: ${{ inputs.dry_run }}
-        run: npm publish --dry-run --access public --tag "${{ inputs.dist_tag }}"
+        run: npm pack --dry-run --json
 
       - name: Publish to npm with provenance
         if: ${{ ! inputs.dry_run }}
