@@ -52,6 +52,10 @@ claim bundle）、换轨（中途换路径/形式/贡献）。被驳回则执行
   哈希输入 `artifacts`、gate 和推进后的 `nextAction`；哈希登记不能替代路径指针。
 - 旧版推进若仅因缺顶层路径进入 STOP，MUST 用 `iph_clear_lock` 的
   `stateArtifacts` + `nextAction` 受控修复并重验，不得重复推进或删除锁。
+- `iph_status` / `iph_transition_plan` 的 `stopLockActive` 是物理锁事实；不得从字段
+  缺失或 READY 的只读快照猜锁状态。STOP 或 committed BLOCKED 时 MUST 结束当前
+  回合，不自动 validate/clear-lock。operator 完成外部修复后，才可调用
+  `iph_clear_lock(resumeBlocked=true, nextAction=..., recoveryNote=...)` 原子恢复。
 
 # 委派与模型路由
 下列环节 MUST 委派给对应 subagent（`task` 工具），主 agent 不内联：

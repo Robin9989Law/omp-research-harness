@@ -1,8 +1,8 @@
-# V0.0.1 设计评审结论
+# V0.0.4 设计评审结论
 
-结论：通过。实现基线以 2026-08-13 的
-`Robin9989Law/innovation-proposition-hunting@13fc4ec865be42beba2dac9e035ca478ab2e9435`
-和本机 omp 17.2.15 为准。
+结论：通过。实现基线以 2026-08-14 的
+`Robin9989Law/innovation-proposition-hunting@636dde23fa637c13d7c305b76f0c5628b0348ebf`
+和 OMP 17.x（真实联调 17.3.0）为准。
 
 ## 已关闭问题
 
@@ -11,10 +11,10 @@
 2. `IPH_SKILL_DIR` 是显式运行时合同。未设置时只检查用户目录下的标准技能位置，
    不写死开发机绝对路径；找不到时返回 `BLOCKED`。运行时还对固定上游 commit 的核心
    文档与全部 Python 脚本逐文件验 SHA-256，不猜测、复制或静默升级 validator。
-3. iph 原有 8 个子命令逐一注册为工具。另加 `iph_bootstrap`，因为权威 CLI 没有
-   init 子命令，而引导模式必须能创建合法 BOOT state。
-4. `session_stop` 的同一失败指纹只自动续跑一次；state 或验证结果改变后才再次续跑。
-   这避免 omp 的 8 次 continuation 上限被同一错误空耗，同时保留唯一恢复动作。
+3. iph 8 个 CLI 子命令逐一注册为工具；另加 `iph_bootstrap`、只读 `iph_status` 与
+   `iph_transition_plan`，共 11 个工具。
+4. `session_stop` 只对没有物理 STOP 锁、且不是 committed BLOCKED 的可修复 INVALID
+   注入一次恢复动作。STOP/BLOCKED 直接停在 operator 边界，防止 M3 重复 validate。
 5. reviewer 由专用 `iph-reviewer` 子代理写产物，主代理不可写。`iph_review` 只接受
    与当前 session file 匹配的 OMP lifecycle 身份，运行时注入 agent/thread ID；登记后
    review 文件不可修改，下一 epoch 只能追加新文件，最终仍由权威 validator 裁决。
@@ -29,7 +29,10 @@
 
 - 插件包可被 `omp plugin link` 识别且 doctor 无 error。
 - BOOT state 可被远端同提交的 `iph validate --strict-new-checks` 判为 READY。
-- 8 个 CLI wrapper 保留 stdout、stderr 与四退出码语义。
+- 8 个 CLI wrapper 保留 stdout、stderr 与四退出码语义；3 个 harness 原生工具保持
+  bootstrap/status/plan 的单一职责。
+- 23 个正向状态节点、22 条迁移、专家路由和禁止动作合同通过拓扑自检；STOP/
+  BLOCKED/rollback/恢复路径通过故障注入矩阵。
 - 直接修改 state、主代理写 reviewer 产物、未授权高信号计算均被 hook 拦截；非
   `iph_*` 工具另有执行后快照回滚，覆盖 eval/Node/自定义工具旁路。
 - 研究模式每轮注入唯一状态；引导模式只提示 bootstrap，不自行选路径。

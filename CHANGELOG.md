@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.0.4 - 2026-08-14
+
+- 增加 23 节点/22 迁移的系统拓扑审计与 10 类故障注入矩阵，缺边、错向、专家路由
+  漂移和 mutable artifact 错误冻结会在测试阶段失败。
+- 修复 `recent_frontier_complete=true` 时 state 时间窗未同步：权威 CLI 现在从本次
+  登记的 literature registry 校验并原子同步 `recent_window`。
+- 增加 `iph_clear_lock.resumeBlocked`：operator 修复外部阻塞后可事务化恢复到
+  `resume_state`；恢复验证失败时 state、STOP lock 与 validation log 全部回滚。
+- STOP 锁或 committed BLOCKED 状态不再触发 `session_stop` 自动续跑，消除 M3 的
+  validate/clear-lock 循环。
+- `iph_status` 和 `iph_transition_plan` 明示 `stopLockActive` 与锁摘要，消除模型从
+  缺失字段误判锁状态的问题。
+- 权威 IPH 锁升级到 `636dde23fa637c13d7c305b76f0c5628b0348ebf`。
+
 - M3 remains the default coordinator, while new `frontier` and `layer` roles route the two
   early scientific judgment gates to GPT-5.6-sol.
 - Added `iph_transition_plan`, specialist task provenance enforcement, immutable protection

@@ -43,8 +43,9 @@
 - 当前目录或最近祖先目录存在 state 即进入研究模式，所有 hook 共用该研究根。
 - iph 状态机驱动一切：仅从 `next_required_action` 恢复，推进前必 validate，
   计算门硬拦。
-- 会话结束（yield）前 hook 自动 `iph validate`，非零即注入唯一恢复动作续跑，
-  对应 iph 的 STOP 锁纪律（R-BLOCKED-03）。
+- 会话结束（yield）前 hook 自动 `iph validate`；可修复的 INVALID 且没有 STOP 锁时
+  才注入一次唯一恢复动作。物理 STOP 锁或 committed BLOCKED 必须停在 operator
+  边界，不自动续跑；外部原因修复后通过事务化 `resumeBlocked` 恢复。
 
 ### 3.2 引导模式（无 `workflow_state.json`）
 

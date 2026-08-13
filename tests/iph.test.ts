@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import {
 	captureProtectedSnapshot,
+	auditSystemTopology,
 	classifyComputeCommand,
 	clearRuntimeRegistryForTests,
 	createBootState,
@@ -13,6 +14,7 @@ import {
 	inspectStopLock,
 	mutableArtifactConflicts,
 	recordSubagentLifecycle,
+	POSITIVE_STATE_SEQUENCE,
 	requiredSpecialistForTarget,
 	resolveSkillDir,
 	restoreProtectedSnapshot,
@@ -69,6 +71,13 @@ describe("read-only STOP visibility", () => {
 });
 
 describe("M3 control-plane routing", () => {
+	test("covers the complete positive state topology with no contract gaps", () => {
+		expect(POSITIVE_STATE_SEQUENCE).toHaveLength(23);
+		expect(POSITIVE_STATE_SEQUENCE[0]).toBe("BOOT");
+		expect(POSITIVE_STATE_SEQUENCE.at(-1)).toBe("COMPLETE");
+		expect(auditSystemTopology()).toEqual([]);
+	});
+
 	test("requires strong specialists only at scientific judgment gates", () => {
 		expect(requiredSpecialistForTarget("SCOPE_LOCK")).toBeUndefined();
 		expect(requiredSpecialistForTarget("RECENT_FRONTIER")).toBe("frontier-auditor");

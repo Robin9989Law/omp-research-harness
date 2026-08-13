@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
@@ -334,8 +335,24 @@ try {
 	const blockedState = JSON.parse(await readFile(statePath, "utf8"));
 	assert(blockedState.active_state === "BLOCKED" && blockedState.resume_state === "SCOPE_LOCK", "BLOCKED state was not persisted");
 	assert(Bun.file(path.join(root, ".workflow_stop.lock")).size > 0, "committed BLOCKED state omitted the STOP lock");
+	const resumedBlocked = await execute(
+		"iph_clear_lock",
+		{
+			recoveryNote: "operator restored the external capability",
+			stateArtifacts: [],
+			nextAction: "Drain prior-round claims before frontier search.",
+			resumeBlocked: true,
+			strict: true,
+		},
+		main,
+	);
+	assert(!resumedBlocked.isError, `BLOCKED resume failed: ${JSON.stringify(resumedBlocked)}`);
+	const resumedState = JSON.parse(await readFile(statePath, "utf8"));
+	assert(resumedState.active_state === "SCOPE_LOCK" && resumedState.resume_state === "SCOPE_LOCK", "BLOCKED did not resume atomically");
+	assert(Array.isArray(resumedState.blocked_reasons) && resumedState.blocked_reasons.length === 0, "BLOCKED reasons survived recovery");
+	assert(!existsSync(path.join(root, ".workflow_stop.lock")), "successful BLOCKED resume retained STOP lock");
 
-	process.stdout.write("omp_e2e=READY loader=real tools=11 hooks=rollback specialist-schema=sanitized transition=transactional blocked=committed frozen=decision-log mutable=guarded recovery=artifact-map root=nested reviewer=lifecycle\n");
+	process.stdout.write("omp_e2e=READY loader=real tools=11 hooks=rollback specialist-schema=sanitized transition=transactional blocked=committed+resumed frozen=decision-log mutable=guarded recovery=artifact-map root=nested reviewer=lifecycle\n");
 } finally {
 	await rm(root, { recursive: true, force: true });
 }

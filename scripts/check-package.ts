@@ -6,6 +6,7 @@ import { createBootState, resolveSkillDir, verifySkillLock } from "../extensions
 const projectRoot = path.resolve(import.meta.dir, "..");
 const required = [
 	"SYSTEM.md",
+	"SYSTEM_TEST_MATRIX.md",
 	"CHANGELOG.md",
 	"extensions/iph.ts",
 	"scripts/omp-e2e.ts",
@@ -35,11 +36,11 @@ for (const relative of required) {
 const pkg = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8"));
 if (
 	pkg.name !== "@prcbooboo/omp-research-harness" ||
-	pkg.version !== "0.0.3" ||
+	pkg.version !== "0.0.4" ||
 	pkg.omp?.version !== pkg.version ||
 	!pkg.omp?.extensions?.includes("extensions/iph.ts")
 ) {
-	throw new Error("package.json is not a V0.0.3 OMP extension package");
+	throw new Error("package.json is not a V0.0.4 OMP extension package");
 }
 if (pkg.private || pkg.publishConfig?.access !== "public" || pkg.publishConfig?.provenance !== true) {
 	throw new Error("package.json is not configured for a public provenance-backed release");

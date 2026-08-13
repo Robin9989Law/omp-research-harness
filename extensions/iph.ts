@@ -91,6 +91,32 @@ interface TransitionPlan {
 	forbidden: string[];
 }
 
+export const POSITIVE_STATE_SEQUENCE = [
+	"BOOT",
+	"SCOPE_LOCK",
+	"PRIOR_CLAIM_DRAIN",
+	"RECENT_FRONTIER",
+	"LITERATURE_REGISTER",
+	"L1_FREEZE",
+	"L2_TRIAGE",
+	"LAYER_DECISION",
+	"K_FULLTEXT",
+	"K_CLAIM_REGISTER",
+	"SYNTHESIZE_COLLISION",
+	"OUTPUT_CLAIM_BIND",
+	"EVIDENCE_VALIDATE",
+	"N0_AUDIT",
+	"CLAIM_FREEZE",
+	"VALIDITY_AUDIT",
+	"INDEPENDENT_REVIEW",
+	"DIRECTION_LOCK",
+	"COMPUTE",
+	"POSTCOMPUTE_CLAIM_FREEZE",
+	"FINAL_VALIDITY_AUDIT",
+	"FINAL_LOCK",
+	"COMPLETE",
+] as const;
+
 const WORKFLOW_FILE = "workflow_state.json";
 const LIFECYCLE_FILE = "lifecycle_state.json";
 const REVIEW_DIR = "review_artifacts";
@@ -308,6 +334,47 @@ const TRANSITION_PLANS: Record<string, TransitionPlan> = {
 		forbidden: ["completion without N0-4C", "completion without current V4 review"],
 	},
 };
+
+export function auditSystemTopology(): string[] {
+	const issues: string[] = [];
+	const expectedSources = POSITIVE_STATE_SEQUENCE.slice(0, -1);
+	const actualSources = Object.keys(TRANSITION_PLANS);
+	for (const source of expectedSources) {
+		if (!actualSources.includes(source)) issues.push(`missing transition source: ${source}`);
+	}
+	for (const source of actualSources) {
+		if (!expectedSources.includes(source as (typeof expectedSources)[number])) {
+			issues.push(`unexpected transition source: ${source}`);
+		}
+	}
+	for (let index = 0; index < expectedSources.length; index += 1) {
+		const source = expectedSources[index]!;
+		const expectedTarget = POSITIVE_STATE_SEQUENCE[index + 1]!;
+		const plan = TRANSITION_PLANS[source];
+		if (plan?.target !== expectedTarget) {
+			issues.push(`${source} target: expected ${expectedTarget}, found ${plan?.target ?? "missing"}`);
+		}
+		if (!plan || plan.forbidden.length === 0) issues.push(`${source} has no forbidden-action contract`);
+		if (plan && mutableArtifactConflicts(plan.immutableArtifacts, plan.stateArtifacts).length > 0) {
+			issues.push(`${source} freezes a mutable pointer artifact`);
+		}
+	}
+	const specialistTargets: Record<string, TransitionPlan["specialist"]> = {
+		RECENT_FRONTIER: "frontier-auditor",
+		LITERATURE_REGISTER: "frontier-auditor",
+		L1_FREEZE: "layer-adjudicator",
+		L2_TRIAGE: "layer-adjudicator",
+		LAYER_DECISION: "layer-adjudicator",
+		SYNTHESIZE_COLLISION: "atomic-claim-extractor",
+		OUTPUT_CLAIM_BIND: "collision-synthesizer",
+	};
+	for (const [target, specialist] of Object.entries(specialistTargets)) {
+		if (requiredSpecialistForTarget(target) !== specialist) {
+			issues.push(`${target} specialist: expected ${specialist}, found ${requiredSpecialistForTarget(target) ?? "none"}`);
+		}
+	}
+	return issues;
+}
 
 const MUTABLE_ARTIFACT_KEYS = new Set([
 	"claim_registry",
@@ -1706,14 +1773,16 @@ export default function iphExtension(pi: ExtensionAPI) {
 			recoveryNote: z.string().min(1),
 			stateArtifacts: z.array(z.string()).default(() => []).describe("STOP recovery assignments such as scope_lock=scope_lock.md"),
 			nextAction: z.string().min(1).optional().describe("Correct the stale next_required_action while recovering"),
+			resumeBlocked: z.boolean().default(false).describe("After an operator fixes the recorded blocker, atomically restore BLOCKED to resume_state"),
 			strict: strictField,
 			root: rootField,
 		}),
 		async execute(_id, params, signal, _update, ctx) {
-			const input = params as { recoveryNote: string; stateArtifacts?: string[]; nextAction?: string; strict: boolean; root?: string };
+			const input = params as { recoveryNote: string; stateArtifacts?: string[]; nextAction?: string; resumeBlocked: boolean; strict: boolean; root?: string };
 			const args = ["--recovery-note", input.recoveryNote, ...(input.strict ? ["--strict-new-checks"] : [])];
 			for (const artifact of input.stateArtifacts ?? []) args.push("--set-artifact", artifact);
 			if (input.nextAction) args.push("--next-action", input.nextAction);
+			if (input.resumeBlocked) args.push("--resume-blocked");
 			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, input.root), "clear-lock", args, signal));
 		},
 	});

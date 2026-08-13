@@ -88,7 +88,7 @@ R-ATOMIC-19（原子观点门槛）· R-REVIEW-20（review 实质四问）。
 | V3/V4 独立复核 | `task` 子代理（`iph-reviewer` 类型）+ 隔离 worktree + `agent://<id>` 身份 | 真实多 agent 身份注入 reviewer_agent_id/thread_id |
 | 证据链 | `read`/`write`/`bash` + 文献 MCP | 文献检索走 MCP/Exa；三层注册仍是 JSON |
 | 状态常驻 | `before_agent_start` hook | 每轮注入 active_state + next_required_action |
-| STOP 锁 | `session_stop` hook + 状态文件 | 非零 → 注入唯一恢复动作续跑 |
+| STOP 锁 | `session_stop` hook + 状态文件 | STOP/BLOCKED 停止自动续跑；operator 修复后事务恢复 |
 
 ## 3. 调优：把「事后校验」升级为「事前拦截」
 
@@ -97,7 +97,7 @@ omp 能把其中一大半变成机器强制：
 
 | iph 失效模式（优化计划证据） | 现状 | omp 调优 |
 |---|---|---|
-| 忘了跑 validate（A2–A6，事故 F3） | 模型自律 | `session_stop` hook 自动 validate，非零续跑注入恢复动作 |
+| 忘了跑 validate（A2–A6，事故 F3） | 模型自律 | `session_stop` hook 自动 validate；仅无锁 INVALID 注入一次恢复动作 |
 | 手改 state 绕过 gate（P4 gate-gaming） | validator 事后查 | `tool_call` hook 拦对 `workflow_state.json` 的直接 edit/write，只许走 `iph_advance` |
 | 独立复核伪造（P0） | reviewer_agent_id 手写字符串 | task 子代理真实身份 + 隔离 worktree + `iph review` 登记 hash |
 | 主 agent 事后改 review 产物（P0） | REVIEW_ARTIFACT_TAMPERED 事后查 | hook 拦主 agent 对 `review_artifacts/` 的 write |

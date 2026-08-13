@@ -98,7 +98,9 @@ FINAL_LOCK = N0-4C AND V4 AND current independent audit
 
 每个研究目录有唯一的 `workflow_state.json`。新会话会从最近的研究根恢复，只执行机器状态中
 的 `next_required_action`。校验失败时工作流进入 STOP，保留已经完成的产物，并只给出一项
-恢复动作。
+恢复动作。`iph_status` 会明确报告物理 STOP 锁，不能再用“字段未显示”猜锁状态。
+STOP/BLOCKED 不会触发自动续跑；operator 修复记录中的外部原因后，使用事务化
+`resumeBlocked` 恢复到 `resume_state`，验证失败则逐字节还原状态、锁和日志。
 
 ### 防篡改与事务配置
 
@@ -185,13 +187,20 @@ FINAL_LOCK = N0-4C AND V4 AND current independent audit
 
 ```bash
 git clone https://github.com/Robin9989Law/innovation-proposition-hunting.git /absolute/path/to/innovation-proposition-hunting
-git -C /absolute/path/to/innovation-proposition-hunting checkout 6c3173d9c6cf1ce7bf727e9680cb9fe4d63936e6
+git -C /absolute/path/to/innovation-proposition-hunting checkout 636dde23fa637c13d7c305b76f0c5628b0348ebf
 export IPH_SKILL_DIR=/absolute/path/to/innovation-proposition-hunting
 ```
 
 建议把 `IPH_SKILL_DIR` 写入 shell 配置，保证以后启动的 OMP 会话也能读取。未设置时，插件只会
 检查几个标准技能目录；找不到锁定版本或内容哈希不一致时会返回 `BLOCKED`，不会换用其他
 validator。
+
+## 系统验证
+
+本项目用 [SYSTEM_TEST_MATRIX.md](SYSTEM_TEST_MATRIX.md) 管理完整验证面：23 个正向
+状态节点、22 条迁移、专家角色路由、正负 N0 终态、STOP/BLOCKED 恢复、事务回滚、
+防篡改、计算门、安装和打包。升级固定按静态拓扑 → 单元 → 真实 OMP 组件 → 故障注入
+→ 部署 → 真实 M3 单步重放执行，首错即停，不靠重复清锁碰运气。
 
 #### 2.2 安装插件
 

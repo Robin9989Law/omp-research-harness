@@ -26,6 +26,11 @@ does not register its state pointer. If an older transition is STOP-locked only 
 pointers are missing, call `iph_clear_lock` with `stateArtifacts`, the corrected `nextAction`,
 and an exact recovery note; never repeat the transition.
 
+Treat `stopLockActive` from `iph_status` / `iph_transition_plan` as the physical-lock truth.
+When `active_state=BLOCKED`, stop at the operator boundary. After the recorded external
+blocker has actually been repaired, call `iph_clear_lock` once with `resumeBlocked: true`, a
+new `nextAction`, and an exact `recoveryNote`; never loop validate or clear-lock.
+
 If target-state validation fails after the authoritative CLI writes a candidate transition,
 the harness restores the pre-transition workflow/lifecycle/validation/STOP-lock snapshot.
 Treat `transition_rolled_back=true` as proof that no state progress was committed; repair the
