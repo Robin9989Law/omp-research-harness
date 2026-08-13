@@ -1,152 +1,327 @@
-# 科研 Harness V0.0.2
+# Research Harness for OMP
 
-把 [innovation-proposition-hunting](https://github.com/Robin9989Law/innovation-proposition-hunting)
-的 Schema 3.0 状态机接入 Oh My Pi，使 E2 创新立题与 E3 方案冻结成为默认、可恢复、
-可机器阻断的科研工作流。Python validator 是唯一裁决源；本插件不复制任何校验逻辑。
+[![npm version](https://img.shields.io/npm/v/%40prcbooboo%2Fomp-research-harness)](https://www.npmjs.com/package/@prcbooboo/omp-research-harness)
+[![CI](https://github.com/Robin9989Law/omp-research-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/Robin9989Law/omp-research-harness/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## 交付内容
+Research Harness 是一个运行在 [Oh My Pi（OMP）](https://github.com/can1357/oh-my-pi)
+上的科研立题插件。它把“这个方向新不新、准备声称的内容是否成立、什么时候可以开始
+实验”从一次聊天判断，变成有状态、可恢复、可审计的工作流。
 
-- `extensions/iph.ts`：BOOT 初始化、8 个 iph CLI 工具、状态注入、STOP 验证、计算门和
-  state/review 防篡改 hook。
-- `agents/*.md`：原子观点、碰撞综合、独立 V3/V4 reviewer，按 `@atomic`、
-  `@collision`、`@review` 路由。
-- `commands/*.md`：`/iph`、`/iph-status`、`/iph-review`。
-- `SYSTEM.md`：全局科研人格与工作流纪律。
-- `schemas/lifecycle_state.schema.json`：只含活动阶段和阶段指针的生命周期薄包装。
+它不是论文生成器，也不会替研究者拍脑袋选题。它重点解决科研过程中最容易失控的两段：
 
-## 运行前提
+- **创新立题**：逐层收敛研究方向，核对危险近邻，优先尝试证伪候选命题。
+- **方案冻结**：冻结精确主张、证据和实验责任，经独立复核后才开放计算。
 
-- omp `>=17.2.15`
+底层裁决来自
+[innovation-proposition-hunting](https://github.com/Robin9989Law/innovation-proposition-hunting)
+Schema 3.0 状态机。Research Harness 负责把它接入 OMP 的工具、subagent、会话和配置系统；
+Python validator 始终是唯一裁决源。
+
+## 它适合什么项目
+
+Research Harness 适合需要认真回答“创新点是否真实存在”的博士论文、期刊论文和长期研究
+项目，尤其适用于这些情况：
+
+- 文献很多，但尚未形成可证伪的具体命题；
+- 担心所谓创新只是换名、参数替换或已知结论的机械延伸；
+- 研究跨越多个会话，需要准确恢复到上次停止的位置；
+- 希望在实验前冻结主张、协议、基线和证据责任；
+- 需要把作者工作与独立复核分开，并保留可验证的 reviewer provenance。
+
+如果只是临时查几篇文献、生成摘要或润色现成稿件，这个插件通常太重。它的目标不是更快地产生
+答案，而是避免研究建立在错误命题上。
+
+## 工作方式
+
+当前版本深做科研生命周期中的 E2“创新立题”和 E3“方案冻结”。E0/E1/E4/E5/E6 已保留
+衔接骨架，但不是本版本的主要自动化范围。
+
+```mermaid
+flowchart LR
+    A["主题与成果类型"] --> B["L1 研究工作"]
+    B --> C["L2 可行创新域"]
+    C --> D["L3 具体命题"]
+    D --> E["逐近邻证伪"]
+    E --> F["N0 新颖性裁决"]
+    F -->|"N0-1 / N0-2"| X["关闭、吸收或降级"]
+    F -->|"N0-4C"| G["冻结精确 claim"]
+    G --> H["有效性审计"]
+    H --> I["独立 reviewer"]
+    I -->|"V3 + 用户授权"| J["允许计算"]
+    J --> K["计算后新 epoch 与 V4 复核"]
+```
+
+负结果不是失败。如果近邻已经直接占据候选，或候选可以从已知结果机械推出，工作流会保留
+证据并关闭方向，而不是为了“做出创新”继续包装它。
+
+## 核心功能
+
+### 分层构建研究命题
+
+工作流按 L1 → L2 → L3 逐层收敛：
+
+- L1 识别领域边界和连续研究链，只使用元数据与摘要；
+- L2 建立危险近邻表，明确哪些浅层主张已被关闭；
+- L3 只对真正进入候选集的工作做全文、原子观点和碰撞分析。
+
+这种顺序可以避免在问题还没形成时批量下载全文、抽取大量最终不会进入裁决的观点。
+
+### 证伪优先的新颖性审计
+
+每个候选都必须接受三类检查：是否被直接占据、是否能机械推出、是否只是换名。候选只有在
+这些证伪尝试都失败后，才可能进入 `N0-4C`。
+
+### 精确主张与有效性门禁
+
+Research Harness 会把论文准备声称的内容绑定到 claim inventory、理论责任、协议、代码、
+测试、基线和证据。经验结果不能自动升格成定理，写作措辞也不能超过当前证据强度。
+
+### 独立复核
+
+V3/V4 复核必须由 `iph-reviewer` subagent 完成。插件从 OMP task lifecycle 注入真实的 agent
+和 session 身份；主 agent 不能伪造 reviewer，也不能在复核后改写 review 产物。
+
+### 计算防火墙
+
+研究计算必须满足：
+
+```text
+COMPUTE = N0-4C AND V3 AND compute_authorized
+FINAL_LOCK = N0-4C AND V4 AND current independent audit
+```
+
+在门禁打开前，插件会拦截研究脚本、明显的数值/机器学习计算和实验命令。探索性产物可以登记，
+但会被永久标记为不可进入冻结证据，防止预实验数字悄悄变成正式结论。
+
+### 可恢复状态与 STOP 纪律
+
+每个研究目录有唯一的 `workflow_state.json`。新会话会从最近的研究根恢复，只执行机器状态中
+的 `next_required_action`。校验失败时工作流进入 STOP，保留已经完成的产物，并只给出一项
+恢复动作。
+
+### 防篡改与事务配置
+
+- 禁止通过 edit、write、shell、eval 或自定义工具直接修改研究状态；
+- 已登记的 review 和状态产物受到快照保护，旁路修改会回滚；
+- 用户级 `SYSTEM.md` 与模型角色采用事务安装，失败会恢复原配置；
+- 卸载前会检查配置漂移，避免覆盖用户后续修改。
+
+### 按任务选择模型
+
+模型不是写死在 agent 中，而是通过 OMP `modelRoles` 路由。当前默认配置是：
+
+| 角色 | 默认模型 | 用途 |
+|---|---|---|
+| `default` | `minimax-code-cn/MiniMax-M3:high` | 主流程 |
+| `atomic` | `openai-codex/gpt-5.6-sol:high` | 原子观点提取 |
+| `collision` | `openai-codex/gpt-5.6-sol:high` | 文献碰撞与证伪综合 |
+| `review` | `deepseek/deepseek-v4-pro:high` | 独立 V3/V4 复核 |
+| `commit` | `minimax-code-cn/MiniMax-M3:high` | 提交信息，与主流程共用模型 |
+
+所有角色都可以在安装时或安装后修改。插件不会在 provider 不可用时静默换模型，因为这会破坏
+复核独立性和运行记录。
+
+## 快速开始
+
+### 1. 准备运行环境
+
+需要：
+
+- OMP `>=17.2.15 <18`
 - Bun `>=1.3.14`
 - Python 3
-- authoritative iph checkout；推荐显式设置：
+- authoritative `innovation-proposition-hunting` checkout
+
+克隆并切换到当前锁定的 IPH 版本：
 
 ```bash
+git clone https://github.com/Robin9989Law/innovation-proposition-hunting.git /absolute/path/to/innovation-proposition-hunting
+git -C /absolute/path/to/innovation-proposition-hunting checkout 13fc4ec865be42beba2dac9e035ca478ab2e9435
 export IPH_SKILL_DIR=/absolute/path/to/innovation-proposition-hunting
 ```
 
-未设置时依次检查 `~/.agents/skills/innovation-proposition-hunting`、
-`~/.codex/skills/innovation-proposition-hunting`、
-`~/.claude/skills/innovation-proposition-hunting`。当前 harness 锁定上游提交
-`13fc4ec865be42beba2dac9e035ca478ab2e9435`，并在每次调用前核对核心说明和全部 Python
-脚本的 SHA-256；HEAD 或内容不一致即 BLOCKED。缺失时同样 BLOCKED，不使用内置副本或
-降级 validator。升级上游必须显式更新并评审 `config/iph-lock.json`。
+建议把 `IPH_SKILL_DIR` 写入 shell 配置，保证以后启动的 OMP 会话也能读取。未设置时，插件只会
+检查几个标准技能目录；找不到锁定版本或内容哈希不一致时会返回 `BLOCKED`，不会换用其他
+validator。
 
-## 开发联调
+### 2. 安装插件
 
 ```bash
-cd /path/to/科研harness
+omp plugin install @prcbooboo/omp-research-harness
+omp plugin doctor @prcbooboo/omp-research-harness
+```
+
+### 3. 安装科研人格和模型角色
+
+OMP 插件安装目录中的脚本会事务化配置用户级 `SYSTEM.md` 和五个受管模型角色：
+
+```bash
+PLUGIN_DIR="$HOME/.omp/plugins/node_modules/@prcbooboo/omp-research-harness"
+
+"$PLUGIN_DIR/scripts/install-user-config.sh" install --dry-run
+"$PLUGIN_DIR/scripts/install-user-config.sh" install \
+  --role atomic=openai-codex/gpt-5.6-sol:high \
+  --role collision=openai-codex/gpt-5.6-sol:high \
+  --role commit=minimax-code-cn/MiniMax-M3:high
+"$PLUGIN_DIR/scripts/install-user-config.sh" status
+```
+
+先运行 `--dry-run` 可以查看将要写入的内容。安装器会保存原 `SYSTEM.md` 和安装前的模型角色，
+任一步失败都会回滚。
+
+### 4. 创建第一个研究工作流
+
+在一个没有其他 `workflow_state.json` 祖先的项目目录中启动 OMP：
+
+```bash
+mkdir my-research-project
+cd my-research-project
+omp
+```
+
+然后输入：
+
+```text
+/iph 为一篇期刊文章建立研究工作流，workflow ID 使用 online-learning-001，claim profile 使用 MIXED
+```
+
+插件会创建 Schema 3.0 的 BOOT state，但不会自动选方向或推进状态。接下来可以查看机器状态：
+
+```text
+/iph-status
+```
+
+继续工作时，让 agent 严格执行唯一恢复动作：
+
+```text
+/iph 执行当前 next_required_action
+```
+
+需要独立复核时使用：
+
+```text
+/iph-review
+```
+
+## 日常使用
+
+| 命令 | 作用 |
+|---|---|
+| `/iph <任务>` | 创建工作流，或执行当前状态允许的单一动作 |
+| `/iph-status` | strict validate，并生成机器状态与交接报告 |
+| `/iph-review` | 派发独立 reviewer，绑定真实 task/session provenance |
+
+插件还向 OMP 注册 9 个底层工具：bootstrap、validate、advance、碰撞轮次创建/修复、review
+封印、STOP 解锁、探索登记和 handover。正常使用时不需要记住这些工具名，斜杠命令和注入的
+机器状态会引导 agent 选择正确工具。
+
+### 如何理解状态
+
+新颖性和有效性是两条独立轴：
+
+| 状态 | 含义 |
+|---|---|
+| `N0-1` | 正式近邻直接占据候选，应关闭或吸收 |
+| `N0-2` | 候选可由已知结果机械推出，应关闭或降级 |
+| `N0-3` | 候选仍处于前沿核验或专属门未完成，不得计算 |
+| `N0-4C` | 新颖性路径通过，可以进入有效性轴 |
+| `V0–V2` | 主张及其理论/算法责任正在冻结和审计 |
+| `V3` | 当前 epoch 已通过独立复核，可以在授权后计算 |
+| `V4` | 计算后的新 claim bundle 已完成再次复核 |
+
+Validator 有四种退出结果：
+
+```text
+READY = 0
+INVALID = 1
+BLOCKED = 2
+MIGRATION_REQUIRED = 3
+```
+
+任何非零结果都会 STOP。修复报告中的唯一恢复动作后，再运行 `/iph-status`；不要直接编辑
+`workflow_state.json` 来“修好”状态。
+
+## 自定义模型
+
+可以用 YAML 或 JSON 文件局部覆盖模型角色，也可以重复传入 `--role`。命令行覆盖文件，文件
+覆盖插件默认值。
+
+```yaml
+# my-model-roles.yml
+modelRoles:
+  atomic: openai-codex/gpt-5.6-sol:max
+  collision: openai-codex/gpt-5.6-sol:max
+  review: deepseek/deepseek-v4-pro:max
+```
+
+已安装后可以直接更新，不需要卸载：
+
+```bash
+"$PLUGIN_DIR/scripts/install-user-config.sh" configure --dry-run \
+  --roles-file /absolute/path/to/my-model-roles.yml
+
+"$PLUGIN_DIR/scripts/install-user-config.sh" configure \
+  --roles-file /absolute/path/to/my-model-roles.yml
+
+"$PLUGIN_DIR/scripts/install-user-config.sh" status
+```
+
+允许管理的角色是 `default`、`atomic`、`collision`、`review`、`commit`。其他已有 OMP 角色会
+原样保留。
+
+## 卸载
+
+先恢复用户配置，再删除插件：
+
+```bash
+"$PLUGIN_DIR/scripts/install-user-config.sh" uninstall --dry-run
+"$PLUGIN_DIR/scripts/install-user-config.sh" uninstall
+omp plugin uninstall @prcbooboo/omp-research-harness
+```
+
+如果安装后手动改过受管配置，卸载会拒绝覆盖。确认要恢复安装前值时才使用
+`uninstall --force`。
+
+## 产品边界
+
+Research Harness 能强制流程和证据合同，但不能替代以下工作：
+
+- 获取你无权访问的付费全文；
+- 领域专家对研究意义和边界条件的最终判断；
+- 实验复现、数据真实性检查和人工伦理审查；
+- 对“绝对新颖”或“必然正确”的保证；
+- E4 系统实验、E5 成文和 E6 投稿的完整自动化。
+
+它能保证的是：机器不会把缺证据、缺复核或未授权的状态标成 READY，也不会在这些条件未
+满足时按正常路径进入计算。
+
+## 开发与验收
+
+从源码联调：
+
+```bash
+git clone https://github.com/Robin9989Law/omp-research-harness.git
+cd omp-research-harness
 bun install --frozen-lockfile
+export IPH_SKILL_DIR=/absolute/path/to/innovation-proposition-hunting
+
 bun run check
+bun run release:check
 omp plugin link .
 omp plugin doctor @prcbooboo/omp-research-harness
 ```
 
-设计要求隔离开发，因此仓库本身不会自动修改 `~/.omp/agent/`。准备上线时运行：
+`bun run check` 包含 TypeScript 检查、单元与安全测试、真实 OMP loader E2E、事务安装/回滚/
+卸载 E2E，以及权威 IPH strict validation。CI 还会运行 authoritative IPH 的完整 pytest
+回归套件。npm 发布使用 GitHub OIDC trusted publishing 和 provenance，不在 workflow 中保存
+长期 npm token。
 
-```bash
-./scripts/install-user-config.sh install --dry-run
-./scripts/install-user-config.sh install
-./scripts/install-user-config.sh status
-```
+## 相关项目
 
-安装器会把已有 `SYSTEM.md`、安装前 model roles 和受管角色集合写进本次 transaction
-manifest；任一步失败都会恢复两者。卸载默认拒绝覆盖安装后被用户修改的受管值，确认后可
-使用 `--force`：
+- [innovation-proposition-hunting](https://github.com/Robin9989Law/innovation-proposition-hunting)：
+  Schema 3.0 状态机、模板、规则和 Python validator。
+- [Oh My Pi](https://github.com/can1357/oh-my-pi)：插件运行时、模型路由、工具和 subagent
+  基础设施。
 
-```bash
-./scripts/install-user-config.sh uninstall --dry-run
-./scripts/install-user-config.sh uninstall
-# 仅在 status 显示受管值漂移且确定要恢复安装前值时：
-./scripts/install-user-config.sh uninstall --force
-```
-
-上述命令只管理用户配置，不隐式安装或删除插件。
-插件仍需通过 `omp plugin link .`（开发）或 `omp plugin install <package>`（发布）安装。
-
-## 模型角色自定义
-
-默认值来自随包的 `config/model-roles.yml`：
-
-```yaml
-modelRoles:
-  default: minimax-code-cn/MiniMax-M3:high
-  atomic: openai-codex/gpt-5.6-sol:high
-  collision: openai-codex/gpt-5.6-sol:high
-  review: deepseek/deepseek-v4-pro:high
-  commit: minimax-code-cn/MiniMax-M3:high
-```
-
-安装时可用 YAML/JSON 文件局部覆盖，也可重复使用 `--role`；命令行优先于文件，文件优先于
-默认值：
-
-```bash
-./scripts/install-user-config.sh install \
-  --roles-file /path/to/my-model-roles.yml \
-  --role atomic=openai-codex/gpt-5.6-sol:max
-```
-
-已安装后无需卸载，可事务化更新。以下命令只改变指定模型配置，其他 OMP roles 原样保留；
-如果写入或 manifest 更新失败，会恢复更新前值：
-
-```bash
-./scripts/install-user-config.sh configure --dry-run \
-  --role review=deepseek/deepseek-v4-pro:max
-./scripts/install-user-config.sh configure \
-  --role review=deepseek/deepseek-v4-pro:max
-./scripts/install-user-config.sh status
-```
-
-允许自定义的 harness roles 为 `default`、`atomic`、`collision`、`review`、`commit`。角色只是
-路由；对应 provider 凭据不可用时必须 BLOCKED，不能自动换模型伪造独立复核。
-
-## 两种模式
-
-引导模式：当前目录没有 `workflow_state.json`。确认成果类型与稳定 workflow ID 后调用
-`iph_bootstrap`；它只创建合法 BOOT state 与 lifecycle pointer，不选创新路径、不推进。
-
-研究模式：从当前目录向上选择最近的 `workflow_state.json` 作为研究根，所以在
-`analysis/`、`src/` 等子目录工作仍共享唯一状态。每轮把机器 state 注入 system
-prompt；只执行当前 `active_state` 的
-`next_required_action`。状态推进只能调用 `iph_advance`。session 停止前自动 strict
-validate；失败时只注入一项恢复动作。
-
-## 安全边界
-
-- `write`/`edit`/shell 不得直接改 `workflow_state.json`。
-- 只有由 OMP task lifecycle 证明的 `iph-reviewer` 会话能封印 review；agent/thread ID
-  由运行时注入，调用方不能提交。已登记产物不可再改，下一 epoch 只能新建文件。
-- 所有非 `iph_*` 工具执行前后都会对 state 与 review 工件做快照；即使经由 eval、
-  Node 脚本或自定义工具绕过命令正则，修改也会回滚并把工具结果标成错误。
-- `lifecycle_state.json` 必须满足 schema、规范指针和由 iph state 推导的活动阶段；漂移
-  时只允许检查或运行 `iph_validate`；该工具先重建派生薄指针，再由 Python 独立裁决
-  研究 state，避免 lifecycle 与 workflow 同时异常时形成恢复死锁。
-- 未获计算权时拦截研究脚本、明显数值/ML inline Python 和实验动词。validator 仍是
-  未登记计算与探索数字泄漏的最终兜底。
-- `iph_*` 工具输出保留 Python CLI 的 stdout、stderr、退出码及
-  READY/INVALID/BLOCKED/MIGRATION_REQUIRED 语义。
-
-## 验收
-
-```bash
-bun run check
-bun run release:check
-```
-
-该命令执行严格 TypeScript 检查、单元/安全测试、真实 OMP extension loader + 工具/hook
-E2E、隔离配置目录中的安装/故障回滚/卸载 E2E、用 authoritative iph 对新建 BOOT state
-做 strict 验证，并检查插件、代理、命令、schema 和配置交付物齐全。`release:check` 还
-生成并解包 npm tarball，验证公开 provenance 配置、runtime-only 文件清单、解包后的真实
-OMP loader 和安装器。GitHub CI 会从固定 commit checkout 上游并运行其完整 pytest 回归
-套件。
-
-实际发布只通过手动触发的 `release` workflow：默认 `dry_run=true`，显式关闭后仍需
-`npm-release` environment 审批，并拒绝覆盖 registry 中已存在的版本；workflow 使用
-npm trusted publishing/OIDC 附加 provenance，并在打包前验证 `repository.url` 与实际
-运行 workflow 的公开 GitHub 仓库精确一致。当前仓库不会因普通 push 或 tag 自动发布。
-
-npm 首次发布前还不存在 package，因而无法预先建立 trusted publisher。`0.0.1` 由维护者
-在本机通过 npm 的 WebAuthn/2FA 交互式创建；创建后立即把 `release.yml`、该 GitHub 仓库和
-`npm-release` environment 登记为 trusted publisher，并把 package publishing access 设为
-要求 2FA、拒绝传统 token。workflow 不接收或写入 `NPM_TOKEN`，后续发行只走短期 OIDC
-凭据并自动附加 provenance。
+本项目使用 [MIT License](LICENSE)。
