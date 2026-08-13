@@ -18,6 +18,7 @@ import {
 	runtimeReviewerIdentity,
 	sanitizeSpecialistTaskInput,
 	sealRuntimeReview,
+	shouldContinueSessionStop,
 	transitionPlanForState,
 	validateLifecycleState,
 	verifySkillLock,
@@ -31,6 +32,19 @@ describe("exit status translation", () => {
 			2: "BLOCKED",
 			3: "MIGRATION_REQUIRED",
 		});
+	});
+});
+
+describe("session-stop control", () => {
+	test("never auto-continues a STOP-locked or committed BLOCKED workflow", () => {
+		expect(shouldContinueSessionStop({ exitCode: 2 }, { active_state: "BLOCKED" }, true)).toBeFalse();
+		expect(shouldContinueSessionStop({ exitCode: 2 }, { active_state: "BLOCKED" }, false)).toBeFalse();
+		expect(shouldContinueSessionStop({ exitCode: 1 }, { active_state: "BLOCKED" }, false)).toBeFalse();
+	});
+
+	test("continues once for a repairable INVALID workflow without a STOP lock", () => {
+		expect(shouldContinueSessionStop({ exitCode: 1 }, { active_state: "SCOPE_LOCK" }, false)).toBeTrue();
+		expect(shouldContinueSessionStop({ exitCode: 0 }, { active_state: "SCOPE_LOCK" }, false)).toBeFalse();
 	});
 });
 

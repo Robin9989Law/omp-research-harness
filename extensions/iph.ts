@@ -1014,6 +1014,15 @@ export function sanitizeSpecialistTaskInput(input: unknown): Record<string, unkn
 	return changed ? sanitized : undefined;
 }
 
+export function shouldContinueSessionStop(
+	result: Pick<IphRunResult, "exitCode">,
+	state: WorkflowState | undefined,
+	stopLockActive: boolean,
+): boolean {
+	if (stopLockActive || result.exitCode === 0 || result.exitCode === 2) return false;
+	return text(state?.active_state) !== "BLOCKED";
+}
+
 export function createBootState(options: {
 	workflowId: string;
 	outputType: "DOCTORAL_DISSERTATION" | "JOURNAL_ARTICLE";
@@ -1912,18 +1921,23 @@ export default function iphExtension(pi: ExtensionAPI) {
 		if (!root) return;
 		const statePath = path.join(root, WORKFLOW_FILE);
 		if (!existsSync(statePath)) return;
+		// STOP/BLOCKED means an operator decision or a specific recovery is required.
+		// Auto-continuing here counteracts the user's turn boundary and causes weak
+		// coordinators to repeat validate/clear-lock forever.
+		if (existsSync(path.join(root, STOP_LOCK_FILE))) return;
 		const result = await runIph(root, "validate", ["--strict-new-checks"], event.signal);
 		if (result.exitCode === 0) {
 			lastStopFingerprint.delete(root);
 			return;
 		}
+		const state = await readWorkflow(root);
+		if (!shouldContinueSessionStop(result, state, false)) return;
 		const stateRaw = await readFile(statePath, "utf8").catch(() => "");
 		const fingerprint = createHash("sha256")
 			.update(`${result.exitCode}\0${result.stdout}\0${result.stderr}\0${stateRaw}`)
 			.digest("hex");
 		if (lastStopFingerprint.get(root) === fingerprint) return;
 		lastStopFingerprint.set(root, fingerprint);
-		const state = await readWorkflow(root);
 		const next = text(state?.next_required_action) || "Repair the first validator issue, then rerun iph_validate.";
 		const diagnostics = `${result.stdout}\n${result.stderr}`.trim().slice(0, 8_000);
 		return {
