@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Robin9989Law/research-harness/schemas/lifecycle_state.schema.json",
+  "title": "Research lifecycle state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "active_stage", "stage_pointers"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "active_stage": {
+      "enum": ["E0", "E1", "E2", "E3", "E4", "E5", "E6"]
+    },
+    "stage_pointers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["E0", "E1", "E2", "E3", "E4", "E5", "E6"],
+      "properties": {
+        "E0": { "type": ["string", "null"] },
+        "E1": { "type": ["string", "null"] },
+        "E2": { "type": ["string", "null"] },
+        "E3": { "type": ["string", "null"] },
+        "E4": { "type": ["string", "null"] },
+        "E5": { "type": ["string", "null"] },
+        "E6": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
