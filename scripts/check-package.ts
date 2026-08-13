@@ -7,6 +7,8 @@ const projectRoot = path.resolve(import.meta.dir, "..");
 const required = [
 	"SYSTEM.md",
 	"extensions/iph.ts",
+	"scripts/omp-e2e.ts",
+	"tsconfig.json",
 	"agents/atomic-claim-extractor.md",
 	"agents/collision-synthesizer.md",
 	"agents/iph-reviewer.md",

@@ -722,8 +722,8 @@ async function bootstrap(
 	return runIph(root, "validate", ["--strict-new-checks"], signal);
 }
 
-function normalizedCommand(input: Record<string, unknown>): string {
-	return Object.values(input)
+function normalizedCommand(input: object): string {
+	return Object.values(input as Record<string, unknown>)
 		.flatMap(value => (typeof value === "string" ? [value] : []))
 		.join("\n");
 }
@@ -1006,6 +1006,12 @@ export default function iphExtension(pi: ExtensionAPI) {
 			root: rootField,
 		}),
 		async execute(_id, params, signal, _update, ctx) {
+			const input = params as {
+				workflowId: string;
+				outputType: "DOCTORAL_DISSERTATION" | "JOURNAL_ARTICLE";
+				claimProfile: "THEORY" | "ALGORITHM" | "MIXED";
+				root?: string;
+			};
 			const existingRoot = findResearchRoot(ctx.cwd);
 			if (existingRoot) {
 				return toolResult(
@@ -1014,11 +1020,11 @@ export default function iphExtension(pi: ExtensionAPI) {
 			}
 			return toolResult(
 				await bootstrap(
-					resolveRoot(ctx.cwd, params.root),
+					resolveRoot(ctx.cwd, input.root),
 					{
-						workflowId: params.workflowId,
-						outputType: params.outputType,
-						claimProfile: params.claimProfile,
+						workflowId: input.workflowId,
+						outputType: input.outputType,
+						claimProfile: input.claimProfile,
 					},
 					signal,
 				),
@@ -1034,8 +1040,9 @@ export default function iphExtension(pi: ExtensionAPI) {
 		loadMode: "essential",
 		parameters: z.object({ root: rootField, strict: strictField }),
 		async execute(_id, params, signal, _update, ctx) {
+			const input = params as { root?: string; strict: boolean };
 			return toolResult(
-				await runIph(resolveResearchRoot(ctx.cwd, params.root), "validate", params.strict ? ["--strict-new-checks"] : [], signal),
+				await runIph(resolveResearchRoot(ctx.cwd, input.root), "validate", input.strict ? ["--strict-new-checks"] : [], signal),
 			);
 		},
 	});
@@ -1055,21 +1062,31 @@ export default function iphExtension(pi: ExtensionAPI) {
 				"POSTCOMPUTE_CLAIM_FREEZE", "FINAL_VALIDITY_AUDIT", "FINAL_LOCK", "BLOCKED", "COMPLETE",
 			]),
 			note: z.string().min(1),
-			gates: z.array(z.string()).default([]).describe("Gate assignments such as scope_locked=true"),
-			artifacts: z.array(z.string()).default([]).describe("Canonical root-relative artifacts to hash"),
+			gates: z.array(z.string()).default(() => []).describe("Gate assignments such as scope_locked=true"),
+			artifacts: z.array(z.string()).default(() => []).describe("Canonical root-relative artifacts to hash"),
 			contribution: z.enum(["NONE", "M", "A", "B", "C"]).optional(),
 			blockedReason: z.string().optional(),
 			strict: strictField,
 			root: rootField,
 		}),
 		async execute(_id, params, signal, _update, ctx) {
-			const args = ["--to", params.to, "--note", params.note];
-			if (params.strict) args.push("--strict-new-checks");
-			for (const gate of params.gates) args.push("--set-gate", gate);
-			for (const artifact of params.artifacts) args.push("--artifact", artifact);
-			if (params.contribution) args.push("--contribution", params.contribution);
-			if (params.blockedReason) args.push("--blocked-reason", params.blockedReason);
-			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, params.root), "advance", args, signal));
+			const input = params as {
+				to: string;
+				note: string;
+				gates: string[];
+				artifacts: string[];
+				contribution?: string;
+				blockedReason?: string;
+				strict: boolean;
+				root?: string;
+			};
+			const args = ["--to", input.to, "--note", input.note];
+			if (input.strict) args.push("--strict-new-checks");
+			for (const gate of input.gates) args.push("--set-gate", gate);
+			for (const artifact of input.artifacts) args.push("--artifact", artifact);
+			if (input.contribution) args.push("--contribution", input.contribution);
+			if (input.blockedReason) args.push("--blocked-reason", input.blockedReason);
+			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, input.root), "advance", args, signal));
 		},
 	});
 
@@ -1080,8 +1097,9 @@ export default function iphExtension(pi: ExtensionAPI) {
 		approval: "write",
 		parameters: z.object({ note: z.string().min(1), strict: strictField, root: rootField }),
 		async execute(_id, params, signal, _update, ctx) {
-			const args = ["--note", params.note, ...(params.strict ? ["--strict-new-checks"] : [])];
-			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, params.root), "start-collision-round", args, signal));
+			const input = params as { note: string; strict: boolean; root?: string };
+			const args = ["--note", input.note, ...(input.strict ? ["--strict-new-checks"] : [])];
+			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, input.root), "start-collision-round", args, signal));
 		},
 	});
 
@@ -1092,11 +1110,12 @@ export default function iphExtension(pi: ExtensionAPI) {
 		approval: "write",
 		parameters: z.object({ strict: strictField, root: rootField }),
 		async execute(_id, params, signal, _update, ctx) {
+			const input = params as { strict: boolean; root?: string };
 			return toolResult(
 				await runIph(
-					resolveResearchRoot(ctx.cwd, params.root),
+					resolveResearchRoot(ctx.cwd, input.root),
 					"repair-collision-round",
-					params.strict ? ["--strict-new-checks"] : [],
+					input.strict ? ["--strict-new-checks"] : [],
 					signal,
 				),
 			);
@@ -1116,8 +1135,9 @@ export default function iphExtension(pi: ExtensionAPI) {
 			root: rootField,
 		}),
 		async execute(_id, params, signal, _update, ctx) {
+			const input = params as { verdict: "PASS" | "FAIL"; auditPath?: string; strict: boolean; root?: string };
 			const discoveredRoot = resolveResearchRoot(ctx.cwd);
-			const root = resolveResearchRoot(ctx.cwd, params.root);
+			const root = resolveResearchRoot(ctx.cwd, input.root);
 			if (root !== discoveredRoot) {
 				return toolResult(
 					blockedResult(root, "iph_review may only seal the reviewer task's own research root"),
@@ -1132,7 +1152,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 					),
 				);
 			}
-			return toolResult(await sealRuntimeReview(root, params.verdict, params.auditPath, params.strict, identity, signal));
+			return toolResult(await sealRuntimeReview(root, input.verdict, input.auditPath, input.strict, identity, signal));
 		},
 	});
 
@@ -1143,8 +1163,9 @@ export default function iphExtension(pi: ExtensionAPI) {
 		approval: "write",
 		parameters: z.object({ recoveryNote: z.string().min(1), strict: strictField, root: rootField }),
 		async execute(_id, params, signal, _update, ctx) {
-			const args = ["--recovery-note", params.recoveryNote, ...(params.strict ? ["--strict-new-checks"] : [])];
-			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, params.root), "clear-lock", args, signal));
+			const input = params as { recoveryNote: string; strict: boolean; root?: string };
+			const args = ["--recovery-note", input.recoveryNote, ...(input.strict ? ["--strict-new-checks"] : [])];
+			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, input.root), "clear-lock", args, signal));
 		},
 	});
 
@@ -1155,11 +1176,12 @@ export default function iphExtension(pi: ExtensionAPI) {
 		approval: "write",
 		parameters: z.object({ path: z.string().min(1), description: z.string().min(1), root: rootField }),
 		async execute(_id, params, signal, _update, ctx) {
+			const input = params as { path: string; description: string; root?: string };
 			return toolResult(
 				await runIph(
-					resolveResearchRoot(ctx.cwd, params.root),
+					resolveResearchRoot(ctx.cwd, input.root),
 					"register-exploration",
-					["--path", params.path, "--desc", params.description],
+					["--path", input.path, "--desc", input.description],
 					signal,
 				),
 			);
@@ -1173,7 +1195,8 @@ export default function iphExtension(pi: ExtensionAPI) {
 		approval: "read",
 		parameters: z.object({ root: rootField }),
 		async execute(_id, params, signal, _update, ctx) {
-			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, params.root), "handover", [], signal));
+			const input = params as { root?: string };
+			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, input.root), "handover", [], signal));
 		},
 	});
 

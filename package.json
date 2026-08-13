@@ -19,13 +19,20 @@
   ],
   "scripts": {
     "test": "bun test",
-    "check": "bun test && bun scripts/check-package.ts"
+    "test:omp": "bun scripts/omp-e2e.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck && bun test && bun run test:omp && bun scripts/check-package.ts"
   },
   "peerDependencies": {
     "@oh-my-pi/pi-coding-agent": ">=17.2.15"
   },
   "engines": {
     "bun": ">=1.3.14"
+  },
+  "devDependencies": {
+    "@oh-my-pi/pi-coding-agent": "17.2.15",
+    "@types/bun": "1.3.14",
+    "typescript": "7.0.2"
   },
   "omp": {
     "name": "Research Harness",

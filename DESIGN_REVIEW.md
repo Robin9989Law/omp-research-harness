@@ -33,3 +33,4 @@
 - 直接修改 state、主代理写 reviewer 产物、未授权高信号计算均被 hook 拦截；非
   `iph_*` 工具另有执行后快照回滚，覆盖 eval/Node/自定义工具旁路。
 - 研究模式每轮注入唯一状态；引导模式只提示 bootstrap，不自行选路径。
+- `tsc --strict`、真实 OMP loader/tool/hook E2E、插件 doctor 与上游完整 pytest 进入 CI。

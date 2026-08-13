@@ -36,8 +36,8 @@ export IPH_SKILL_DIR=/absolute/path/to/innovation-proposition-hunting
 
 ```bash
 cd /path/to/科研harness
-bun test
-bun scripts/check-package.ts
+bun install --frozen-lockfile
+bun run check
 omp plugin link .
 omp plugin doctor @robinlaw/omp-research-harness
 ```
@@ -97,5 +97,7 @@ validate；失败时只注入一项恢复动作。
 bun run check
 ```
 
-该命令执行单元测试、用 authoritative iph 对新建 BOOT state 做 strict 验证，并检查
-插件、代理、命令、schema 和配置交付物齐全。
+该命令执行严格 TypeScript 检查、单元/安全测试、真实 OMP extension loader + 工具/hook
+E2E、用 authoritative iph 对新建 BOOT state 做 strict 验证，并检查插件、代理、命令、
+schema 和配置交付物齐全。GitHub CI 还会从固定 commit checkout 上游并运行其完整 pytest
+回归套件。
