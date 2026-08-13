@@ -44,7 +44,7 @@ if (pkg.private || pkg.publishConfig?.access !== "public" || pkg.publishConfig?.
 }
 const expectedRepository = process.env.EXPECTED_GITHUB_REPOSITORY;
 if (expectedRepository) {
-	const expectedUrl = `https://github.com/${expectedRepository}`;
+	const expectedUrl = `git+https://github.com/${expectedRepository}.git`;
 	if (pkg.repository?.type !== "git" || pkg.repository?.url !== expectedUrl) {
 		throw new Error(`package repository must match provenance source exactly: ${expectedUrl}`);
 	}
