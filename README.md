@@ -71,8 +71,8 @@ manifest；任一步失败都会恢复两者。卸载默认拒绝覆盖安装后
 ```yaml
 modelRoles:
   default: minimax-code-cn/MiniMax-M3:high
-  atomic: deepseek/deepseek-v4-pro:high
-  collision: deepseek/deepseek-v4-pro:high
+  atomic: openai-codex/gpt-5.6-sol:high
+  collision: openai-codex/gpt-5.6-sol:high
   review: deepseek/deepseek-v4-pro:high
   commit: deepseek/deepseek-v4-flash:high
 ```
@@ -83,7 +83,7 @@ modelRoles:
 ```bash
 ./scripts/install-user-config.sh install \
   --roles-file /path/to/my-model-roles.yml \
-  --role atomic=deepseek/deepseek-v4-pro:max
+  --role atomic=openai-codex/gpt-5.6-sol:max
 ```
 
 已安装后无需卸载，可事务化更新。以下命令只改变指定模型配置，其他 OMP roles 原样保留；

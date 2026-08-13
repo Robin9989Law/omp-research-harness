@@ -69,7 +69,7 @@ try {
 		"install did not deploy the harness SYSTEM.md",
 	);
 	let installedRoles = await getRoles(agentDir);
-	assert(installedRoles.atomic === "deepseek/deepseek-v4-pro:high", "install did not set managed model roles");
+	assert(installedRoles.atomic === "openai-codex/gpt-5.6-sol:high", "install did not set managed model roles");
 	assert(installedRoles.unrelated === "keep/me", "install clobbered an unrelated model role");
 	const customRolesFile = path.join(testRoot, "custom-roles.yml");
 	await writeFile(customRolesFile, "modelRoles:\n  review: user/custom-review:high\n");
