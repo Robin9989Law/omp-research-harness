@@ -1,4 +1,4 @@
-# 科研 Harness V0.0.1
+# 科研 Harness V0.0.2
 
 把 [innovation-proposition-hunting](https://github.com/Robin9989Law/innovation-proposition-hunting)
 的 Schema 3.0 状态机接入 Oh My Pi，使 E2 创新立题与 E3 方案冻结成为默认、可恢复、

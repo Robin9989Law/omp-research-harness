@@ -1,6 +1,6 @@
 {
   "name": "@prcbooboo/omp-research-harness",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Research-first OMP harness backed by the innovation-proposition-hunting state machine",
   "type": "module",
   "license": "MIT",
@@ -49,7 +49,7 @@
   },
   "omp": {
     "name": "Research Harness",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "description": "Makes iph the default E2/E3 research workflow",
     "extensions": [
       "extensions/iph.ts"

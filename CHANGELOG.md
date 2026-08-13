@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.2 - 2026-08-13
+
+- 将 npm repository 元数据规范化为 canonical git URL。
+- npm 发布工作流移除长期 token，只允许受审批的 GitHub OIDC trusted publisher。
+- package publishing access 强制 2FA，并拒绝传统 token 直接发布。
+- release dry-run 改为 registry-safe 打包验证，可在版本已发布后重复运行。
+
 ## 0.0.1 - 2026-08-13
 
 - npm 发布坐标确定为 `@prcbooboo/omp-research-harness`。
