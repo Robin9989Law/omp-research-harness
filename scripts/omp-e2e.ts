@@ -40,6 +40,7 @@ try {
 		"iph_repair_collision_round",
 		"iph_review",
 		"iph_start_collision_round",
+		"iph_status",
 		"iph_transition_plan",
 		"iph_validate",
 	];
@@ -67,6 +68,12 @@ try {
 	const originalState = await readFile(statePath, "utf8");
 	const lifecycle = JSON.parse(await readFile(lifecyclePath, "utf8"));
 	assert(validateLifecycleState(lifecycle, "E2").length === 0, "bootstrap wrote a noncanonical lifecycle state");
+	const status = await execute("iph_status", {}, main);
+	assert(!status.isError, `read-only iph_status failed: ${JSON.stringify(status)}`);
+	assert(
+		status.content.some(item => item.type === "text" && item.text.includes('"validation": "NOT_RUN_READ_ONLY_SNAPSHOT"')),
+		"iph_status blurred a read-only snapshot with validator output",
+	);
 	const transitionPlan = await execute("iph_transition_plan", {}, main);
 	assert(!transitionPlan.isError, `BOOT transition plan failed: ${JSON.stringify(transitionPlan)}`);
 	assert(
@@ -100,6 +107,44 @@ try {
 		nestedMain,
 	)) as { block?: boolean };
 	assert(directWrite.block === true, "OMP tool_call hook did not block direct workflow mutation");
+
+	const malformedSpecialist = (await toolCallHandlers[0]!(
+		{
+			type: "tool_call",
+			toolCallId: "malformed-specialist-schema",
+			toolName: "task",
+			input: {
+				context: "frontier gate",
+				tasks: [{
+					name: "FrontierAudit",
+					agent: "frontier-auditor",
+					task: "write the contracted artifacts",
+					outputSchema: "{malformed",
+					schemaMode: "strict",
+				}],
+			},
+		} satisfies ToolCallEvent,
+		nestedMain,
+	)) as { input?: Record<string, unknown> };
+	const sanitizedTasks = malformedSpecialist.input?.tasks as Array<Record<string, unknown>> | undefined;
+	assert(
+		sanitizedTasks?.length === 1 &&
+		!Object.hasOwn(sanitizedTasks[0]!, "outputSchema") &&
+		!Object.hasOwn(sanitizedTasks[0]!, "schemaMode"),
+		"OMP tool_call hook did not remove a specialist caller schema",
+	);
+	await toolResultHandlers[0]!(
+		{
+			type: "tool_result",
+			toolCallId: "malformed-specialist-schema",
+			toolName: "task",
+			input: malformedSpecialist.input ?? {},
+			content: [{ type: "text", text: "specialist task completed" }],
+			details: {},
+			isError: false,
+		} satisfies ToolResultEvent,
+		nestedMain,
+	);
 
 	const customCall = {
 		type: "tool_call",
@@ -290,7 +335,7 @@ try {
 	assert(blockedState.active_state === "BLOCKED" && blockedState.resume_state === "SCOPE_LOCK", "BLOCKED state was not persisted");
 	assert(Bun.file(path.join(root, ".workflow_stop.lock")).size > 0, "committed BLOCKED state omitted the STOP lock");
 
-	process.stdout.write("omp_e2e=READY loader=real tools=10 hooks=rollback transition=transactional blocked=committed frozen=decision-log mutable=guarded recovery=artifact-map root=nested reviewer=lifecycle\n");
+	process.stdout.write("omp_e2e=READY loader=real tools=11 hooks=rollback specialist-schema=sanitized transition=transactional blocked=committed frozen=decision-log mutable=guarded recovery=artifact-map root=nested reviewer=lifecycle\n");
 } finally {
 	await rm(root, { recursive: true, force: true });
 }

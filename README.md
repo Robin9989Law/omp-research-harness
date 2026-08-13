@@ -325,9 +325,14 @@ claim profile：【THEORY / ALGORITHM / MIXED】
 | `/iph-status` | strict validate，并生成机器状态与交接报告 |
 | `/iph-review` | 派发独立 reviewer，绑定真实 task/session provenance |
 
-插件还向 OMP 注册 10 个底层工具：transition plan、bootstrap、validate、advance、碰撞轮次创建/修复、review
+插件还向 OMP 注册 11 个底层工具：只读 status、transition plan、bootstrap、validate、advance、碰撞轮次创建/修复、review
 封印、STOP 解锁、探索登记和 handover。正常使用时不需要记住这些工具名，斜杠命令和注入的
 机器状态会引导 agent 选择正确工具。
+
+当 transition plan 指定 specialist 时，M3 只需给 `task` 传 `context` 和
+`tasks[].name/agent/task`。插件会移除 M3 自造的 `outputSchema` / `schemaMode`，避免便宜
+主模型生成截断 JSON Schema 导致委派预检失败。`iph_*` 工具始终按原名直接调用，不使用
+`ipc_call` 等包装层。
 
 ### 如何理解状态
 

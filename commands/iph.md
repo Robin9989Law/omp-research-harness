@@ -15,6 +15,9 @@ action.
 Before drafting or advancing, call `iph_transition_plan`. If it names a specialist, dispatch
 that exact task agent and pass the completed task ID back as `specialistAgentId`. M3 remains
 the coordinator and must not inline frontier, layer, atomic-claim or collision judgments.
+Call `task` with only `context` plus each item's `name`, `agent`, and `task`; omit
+`outputSchema` and `schemaMode` for these specialists. Call every `iph_*` tool directly by
+its exact name; never invent `ipc_call` or another wrapper.
 
 When calling `iph_advance`, pass the post-transition `nextAction`. For every newly true gate,
 pass each required top-level pointer as `stateArtifacts: ["key=relative/path"]`; separately

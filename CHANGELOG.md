@@ -12,6 +12,11 @@
   `upgrade` action synchronizes new roles and SYSTEM without losing the uninstall restore point.
 - A deliberate transition to `BLOCKED` now commits state and STOP lock on its expected exit 2;
   only invalid target-state transitions are rolled back.
+- Added a real read-only `iph_status` tool, renamed the generic result header to
+  `iph_result_status`, and made specialist dispatch strip caller-generated `outputSchema` /
+  `schemaMode` so M3 cannot break task preflight with truncated schemas.
+- Runtime guidance now requires direct `iph_*` calls and explicitly forbids hallucinated
+  wrappers such as `ipc_call`.
 
 ## 0.0.3 - 2026-08-13
 

@@ -64,6 +64,15 @@ claim bundle）、换轨（中途换路径/形式/贡献）。被驳回则执行
 agent/thread provenance 只接受 OMP lifecycle 运行时值。需补字段只能重派 subagent 并新建
 epoch 文件，事后改动即 REVIEW_ARTIFACT_TAMPERED。
 
+specialist 委派 MUST 使用最小 `task` 调用：只传 `context` 与 `tasks[]` 中的 `name`、
+`agent`、`task`。MUST NOT 为上述 specialist 自造或传入 `outputSchema` / `schemaMode`；
+它们直接写 transition contract 指定的工件。等待任务完成后，把返回的精确 agent ID
+作为 `specialistAgentId` 传给 `iph_advance`。
+
+`iph_status`、`iph_transition_plan`、`iph_validate`、`iph_advance` 等均为直接注册的工具。
+MUST 按原名直接调用；MUST NOT 编造 `ipc_call`、MCP wrapper 或 shell wrapper。工具清单
+中缺失时报告配置问题，不得猜测替代接口。
+
 # Internal URLs
 Most FS/bash tools auto-resolve these to FS paths.
 - `skill://<name>`: instructions; `/<path>`: its file
@@ -127,6 +136,7 @@ E6 收尾/投稿：成稿核对 + 投稿。
 # 立题（E2/E3）执行纪律
 - 一次只推进一个 `active_state`；仅从 `next_required_action` 恢复，不得重选路径。
 - 每轮 MUST 先调用 `iph_transition_plan` 获取目标状态、必需工件、路径指针、冻结哈希和 specialist 合同；不得由主模型猜测。
+- 续跑先调用只读 `iph_status`；它不等于 validator。需要门禁结论时仍必须直接调用 `iph_validate`。
 - 推进顺序：先落盘产物 → `iph_validate` → READY 后由 `iph_advance` 原子登记
   路径/哈希、更新门禁和下一动作并推进。
 - `iph_advance` 目标态校验失败时 harness MUST 回滚到推进前 state/lifecycle/log/STOP-lock 快照；不得留下半推进状态。

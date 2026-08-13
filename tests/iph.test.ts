@@ -16,6 +16,7 @@ import {
 	resolveSkillDir,
 	restoreProtectedSnapshot,
 	runtimeReviewerIdentity,
+	sanitizeSpecialistTaskInput,
 	sealRuntimeReview,
 	transitionPlanForState,
 	validateLifecycleState,
@@ -55,6 +56,36 @@ describe("M3 control-plane routing", () => {
 			["near_neighbor_registry.json", "scope_lock.md"],
 			["literature_registry=near_neighbor_registry.json", "scope_lock=scope_lock.md"],
 		)).toEqual(["literature_registry=near_neighbor_registry.json"]);
+	});
+
+	test("removes caller schemas only from scientific specialist tasks", () => {
+		expect(sanitizeSpecialistTaskInput({
+			context: "frontier gate",
+			tasks: [
+				{
+					name: "FrontierAudit",
+					agent: "frontier-auditor",
+					task: "write the contracted frontier artifacts",
+					outputSchema: "{malformed",
+					schemaMode: "strict",
+				},
+				{ name: "Scout", agent: "scout", task: "read only", outputSchema: { type: "object" } },
+			],
+		})).toEqual({
+			context: "frontier gate",
+			tasks: [
+				{
+					name: "FrontierAudit",
+					agent: "frontier-auditor",
+					task: "write the contracted frontier artifacts",
+				},
+				{ name: "Scout", agent: "scout", task: "read only", outputSchema: { type: "object" } },
+			],
+		});
+		expect(sanitizeSpecialistTaskInput({
+			context: "already minimal",
+			tasks: [{ name: "FrontierAudit", agent: "frontier-auditor", task: "audit" }],
+		})).toBeUndefined();
 	});
 });
 
