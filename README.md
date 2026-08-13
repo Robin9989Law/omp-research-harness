@@ -124,7 +124,41 @@ FINAL_LOCK = N0-4C AND V4 AND current independent audit
 
 ## 快速开始
 
-### 1. 准备运行环境
+### 1. 用提示词安装（推荐）
+
+已经能启动 OMP 时，先把下面整段交给它。安装过程中如果发现已有 checkout 或用户配置
+被手动修改，OMP 应停止并报告差异，不覆盖现有内容。
+
+```text
+请为当前用户安装并配置最新版 Research Harness：
+@prcbooboo/omp-research-harness
+
+请严格完成以下步骤：
+1. 检查 OMP、Bun 和 Python 版本是否满足插件要求。
+2. 使用 `omp plugin install @prcbooboo/omp-research-harness@latest` 安装插件。
+3. 读取插件内的 `config/iph-lock.json`，把 authoritative
+   innovation-proposition-hunting checkout 放在标准用户技能目录，并切换到 lock 指定的
+   commit。已有 checkout 若有未提交修改，不得 reset 或覆盖，直接停止并报告。
+4. 运行 `omp plugin doctor @prcbooboo/omp-research-harness`。
+5. 先运行用户配置安装器的 `install --dry-run`。如果发现旧版安装清单，先检查配置漂移；
+   无漂移时事务化卸载旧配置后再安装最新版，有漂移时停止并报告。
+6. 安装科研 SYSTEM 和模型角色，保持以下路由：
+   - default、commit：minimax-code-cn/MiniMax-M3:high
+   - atomic、collision：openai-codex/gpt-5.6-sol:high
+   - review：deepseek/deepseek-v4-pro:high
+   不要修改 task、vision、plan、designer 等非受管角色。
+7. 最后运行安装器 `status`、插件 doctor 和模型角色读取，报告插件版本、权威 IPH commit、
+   SYSTEM 是否匹配及全部 roleDrift。任何检查失败都不要继续创建研究工作流。
+
+安装完成后提醒我退出并重新启动 OMP，让新的插件工具和 SYSTEM 生效。
+```
+
+重启 OMP 后再创建研究工作流。安装会改变用户级 `SYSTEM.md` 和五个受管模型角色，因此不要在
+正在执行研究动作的会话中边安装边继续推进。
+
+### 2. 手动安装
+
+#### 2.1 准备运行环境
 
 需要：
 
@@ -145,14 +179,14 @@ export IPH_SKILL_DIR=/absolute/path/to/innovation-proposition-hunting
 检查几个标准技能目录；找不到锁定版本或内容哈希不一致时会返回 `BLOCKED`，不会换用其他
 validator。
 
-### 2. 安装插件
+#### 2.2 安装插件
 
 ```bash
-omp plugin install @prcbooboo/omp-research-harness
+omp plugin install @prcbooboo/omp-research-harness@latest
 omp plugin doctor @prcbooboo/omp-research-harness
 ```
 
-### 3. 安装科研人格和模型角色
+#### 2.3 安装科研人格和模型角色
 
 OMP 插件安装目录中的脚本会事务化配置用户级 `SYSTEM.md` 和五个受管模型角色：
 
@@ -170,7 +204,7 @@ PLUGIN_DIR="$HOME/.omp/plugins/node_modules/@prcbooboo/omp-research-harness"
 先运行 `--dry-run` 可以查看将要写入的内容。安装器会保存原 `SYSTEM.md` 和安装前的模型角色，
 任一步失败都会回滚。
 
-### 4. 创建第一个研究工作流
+### 3. 新项目怎么开始
 
 在一个没有其他 `workflow_state.json` 祖先的项目目录中启动 OMP：
 
@@ -180,13 +214,62 @@ cd my-research-project
 omp
 ```
 
+然后复制下面的提示词，替换方括号中的内容：
+
+```text
+/iph 这是一个新研究项目，请从 BOOT 开始建立创新立题工作流。
+
+研究主题：【一句话主题】
+目标成果类型：【期刊论文 / 博士论文】
+workflow ID：【稳定、简短、使用英文和连字符的 ID】
+claim profile：【THEORY / ALGORITHM / MIXED】
+
+要求：
+1. 先确认成果类型、研究边界和 workflow ID，再调用 iph_bootstrap。
+2. 本轮只创建 Schema 3.0 BOOT state，不自动选择创新路径，不搜索文献，不推进状态。
+3. 不运行任何研究计算。
+4. 创建后报告 active_state、next_required_action 和 strict validation 结果。
+```
+
+`claim profile` 不确定时，通常先选 `MIXED`；如果项目明确只有理论责任或只有算法/协议责任，
+再分别使用 `THEORY` 或 `ALGORITHM`。
+
+### 4. 已有项目怎么重新立题
+
+已有项目的代码、稿件、文献和历史实验可以复用，但旧结论不能自动继承。推荐在旧项目旁边创建
+一个独立的 reframing 目录，把原项目作为只读背景：
+
+```bash
+mkdir project-reframing
+cd project-reframing
+omp
+```
+
 然后输入：
 
 ```text
-/iph 为一篇期刊文章建立研究工作流，workflow ID 使用 online-learning-001，claim profile 使用 MIXED
+/iph 请为已有项目“【旧项目的绝对路径】”从 BOOT 开始重新立题。新的 workflow 和全部裁决产物保存在当前目录，旧项目只作为只读背景。
+
+目标成果类型：【期刊论文 / 博士论文】
+workflow ID：【例如 project-reframing-001】
+claim profile：【THEORY / ALGORITHM / MIXED】
+
+要求：
+1. 不继承旧项目对创新性、有效性或贡献成立的判断。
+2. 旧代码、稿件、文献库和实验记录只作为候选材料；历史实验结果先视为探索性材料，不得直接进入冻结证据。
+3. 后续重新执行 L1 研究链识别、L2 危险近邻分析和 L3 具体命题碰撞，优先寻找能够否定候选的证据。
+4. 明确登记哪些旧主张被关闭、吸收、降级或需要重新核验。
+5. 未达到 N0-4C、V3 并获得计算授权前，不运行研究计算。
+6. 本轮只创建 Schema 3.0 BOOT workflow，不自动推进；创建后报告唯一 next_required_action。
 ```
 
-插件会创建 Schema 3.0 的 BOOT state，但不会自动选方向或推进状态。接下来可以查看机器状态：
+如果旧项目中没有 `workflow_state.json`，也可以直接在项目根目录启动；只要已经存在旧 state，
+就不要覆盖它，也不要在其子目录再建一个 state。新目录应与旧研究根并列，或放在完全独立的
+路径中。
+
+### 5. 创建后怎么继续
+
+先查看机器状态：
 
 ```text
 /iph-status
