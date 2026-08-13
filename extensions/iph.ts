@@ -926,6 +926,20 @@ async function runTransactionalAdvance(
 		snapshot.entries.get(WORKFLOW_FILE),
 	));
 	if (!stateChanged) return result;
+	const targetIndex = args.indexOf("--to");
+	const target = targetIndex >= 0 ? args[targetIndex + 1] : undefined;
+	if (target === "BLOCKED" && result.exitCode === 2) {
+		const committedState = await readWorkflow(root);
+		if (text(committedState?.active_state) === "BLOCKED") {
+			return {
+				...result,
+				stdout: [
+					result.stdout.trim(),
+					"EXPECTED_BLOCKED_COMMIT preserved the BLOCKED state and STOP lock; exit 2 is the committed workflow status, not a failed transaction.",
+				].filter(Boolean).join("\n"),
+			};
+		}
+	}
 
 	try {
 		await restoreFileTransaction(snapshot);

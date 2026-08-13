@@ -263,7 +263,34 @@ try {
 		"real lifecycle identity was not propagated into the reviewer tool path",
 	);
 
-	process.stdout.write("omp_e2e=READY loader=real tools=10 hooks=rollback transition=transactional frozen=decision-log mutable=guarded recovery=artifact-map root=nested reviewer=lifecycle\n");
+	const expectedBlocked = await execute(
+		"iph_advance",
+		{
+			to: "BLOCKED",
+			note: "record an unavailable external capability",
+			gates: [],
+			artifacts: [],
+			stateArtifacts: [],
+			nextAction: "Restore the unavailable capability, then clear the STOP lock with an exact recovery note.",
+			blockedReason: "required external research capability is unavailable",
+			strict: true,
+		},
+		main,
+	);
+	assert(expectedBlocked.isError, "committed BLOCKED status did not preserve exit code 2");
+	assert(
+		expectedBlocked.content.some(item => item.type === "text" && item.text.includes("EXPECTED_BLOCKED_COMMIT")),
+		"legitimate BLOCKED transition was not identified as committed",
+	);
+	assert(
+		!expectedBlocked.content.some(item => item.type === "text" && item.text.includes("transition_rolled_back=true")),
+		"legitimate BLOCKED transition was rolled back",
+	);
+	const blockedState = JSON.parse(await readFile(statePath, "utf8"));
+	assert(blockedState.active_state === "BLOCKED" && blockedState.resume_state === "SCOPE_LOCK", "BLOCKED state was not persisted");
+	assert(Bun.file(path.join(root, ".workflow_stop.lock")).size > 0, "committed BLOCKED state omitted the STOP lock");
+
+	process.stdout.write("omp_e2e=READY loader=real tools=10 hooks=rollback transition=transactional blocked=committed frozen=decision-log mutable=guarded recovery=artifact-map root=nested reviewer=lifecycle\n");
 } finally {
 	await rm(root, { recursive: true, force: true });
 }

@@ -220,6 +220,15 @@ PLUGIN_DIR="$HOME/.omp/plugins/node_modules/@prcbooboo/omp-research-harness"
 先运行 `--dry-run` 可以查看将要写入的内容。安装器会保存原 `SYSTEM.md` 和安装前的模型角色，
 任一步失败都会回滚。
 
+本地软链接开发或插件升级后，先运行 `status`。若 `upgradeRequired=true`，用事务化升级同步
+新版 SYSTEM 和新增模型角色，同时保留首次安装前的卸载恢复点：
+
+```bash
+"$PLUGIN_DIR/scripts/install-user-config.sh" upgrade --dry-run
+"$PLUGIN_DIR/scripts/install-user-config.sh" upgrade
+"$PLUGIN_DIR/scripts/install-user-config.sh" status
+```
+
 ### 3. 新项目怎么开始
 
 在一个没有其他 `workflow_state.json` 祖先的项目目录中启动 OMP：
@@ -374,6 +383,8 @@ modelRoles:
 
 "$PLUGIN_DIR/scripts/install-user-config.sh" status
 ```
+
+`configure` 只修改模型选择；`upgrade` 用于插件源码新增角色或 SYSTEM 变化后的整体同步。
 
 允许管理的角色是 `default`、`frontier`、`layer`、`atomic`、`collision`、`review`、`commit`。其他已有 OMP 角色会
 原样保留。

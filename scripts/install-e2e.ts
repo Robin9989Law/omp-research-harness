@@ -1,9 +1,14 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 
 function assert(condition: unknown, message: string): asserts condition {
 	if (!condition) throw new Error(message);
+}
+
+function sha256(value: string): string {
+	return createHash("sha256").update(value).digest("hex");
 }
 
 const projectRoot = path.resolve(import.meta.dir, "..");
@@ -120,6 +125,64 @@ try {
 	assert(restoredRoles.unrelated === "changed/after-install", "uninstall clobbered a post-install unrelated role change");
 	assert(!Bun.file(manifestPath).size, "uninstall left its install manifest behind");
 
+	const legacyAgent = path.join(testRoot, "legacy-agent");
+	await setRoles(legacyAgent, { default: "legacy/default", unrelated: "legacy/keep" });
+	await writeFile(path.join(legacyAgent, "SYSTEM.md"), "legacy original system\n");
+	const legacyInstalled = await run(legacyAgent, ["install"]);
+	assert(legacyInstalled.exitCode === 0, `legacy scenario install failed: ${legacyInstalled.stderr}`);
+	const legacyManifestPath = path.join(legacyAgent, "research-harness-install.json");
+	const legacyManifest = JSON.parse(await readFile(legacyManifestPath, "utf8"));
+	delete legacyManifest.managed_roles.frontier;
+	delete legacyManifest.managed_roles.layer;
+	const legacyInstalledSystem = "legacy installed harness system\n";
+	legacyManifest.installed_system_sha256 = sha256(legacyInstalledSystem);
+	await writeFile(legacyManifestPath, `${JSON.stringify(legacyManifest, null, 2)}\n`);
+	await writeFile(path.join(legacyAgent, "SYSTEM.md"), legacyInstalledSystem);
+	const legacyRoles = await getRoles(legacyAgent);
+	delete legacyRoles.frontier;
+	delete legacyRoles.layer;
+	await setRoles(legacyAgent, legacyRoles);
+	const legacyStatus = await run(legacyAgent, ["status"]);
+	assert(legacyStatus.exitCode === 0, `legacy status failed: ${legacyStatus.stderr}`);
+	const legacyStatusPayload = JSON.parse(legacyStatus.stdout);
+	assert(legacyStatusPayload.upgradeRequired === true, "status missed a required user-config upgrade");
+	assert(
+		legacyStatusPayload.sourceSystemMatches === false &&
+		legacyStatusPayload.missingManagedRoles.includes("frontier") &&
+		legacyStatusPayload.missingManagedRoles.includes("layer") &&
+		legacyStatusPayload.roleDrift.frontier.actual === null,
+		"status did not diagnose roles added after the original install",
+	);
+	const legacyUpgradeDryRun = await run(legacyAgent, ["upgrade", "--dry-run"]);
+	assert(legacyUpgradeDryRun.exitCode === 0 && legacyUpgradeDryRun.stdout.includes('"action": "upgrade"'), "upgrade dry-run failed");
+	assert((await readFile(path.join(legacyAgent, "SYSTEM.md"), "utf8")) === legacyInstalledSystem, "upgrade dry-run changed SYSTEM.md");
+	const failedLegacyUpgrade = await run(legacyAgent, ["upgrade"], { RESEARCH_HARNESS_TEST_FAIL_AFTER: "roles" });
+	assert(failedLegacyUpgrade.exitCode !== 0 && failedLegacyUpgrade.stderr.includes("was restored"), "failed upgrade did not report rollback");
+	assert((await readFile(path.join(legacyAgent, "SYSTEM.md"), "utf8")) === legacyInstalledSystem, "failed upgrade did not restore SYSTEM.md");
+	assert(!(await getRoles(legacyAgent)).frontier, "failed upgrade did not restore legacy model roles");
+	const legacyUpgraded = await run(legacyAgent, ["upgrade"]);
+	assert(legacyUpgraded.exitCode === 0, `legacy upgrade failed: ${legacyUpgraded.stderr}`);
+	const upgradedLegacyRoles = await getRoles(legacyAgent);
+	assert(
+		upgradedLegacyRoles.frontier === "openai-codex/gpt-5.6-sol:high" &&
+		upgradedLegacyRoles.layer === "openai-codex/gpt-5.6-sol:high",
+		"upgrade did not install newly managed model roles",
+	);
+	assert(
+		(await readFile(path.join(legacyAgent, "SYSTEM.md"), "utf8")) === (await readFile(path.join(projectRoot, "SYSTEM.md"), "utf8")),
+		"upgrade did not synchronize the current SYSTEM.md",
+	);
+	const upgradedLegacyStatus = JSON.parse((await run(legacyAgent, ["status"])).stdout);
+	assert(upgradedLegacyStatus.upgradeRequired === false, "status still requested upgrade after successful synchronization");
+	const legacyUninstalled = await run(legacyAgent, ["uninstall"]);
+	assert(legacyUninstalled.exitCode === 0, `upgraded legacy uninstall failed: ${legacyUninstalled.stderr}`);
+	assert((await readFile(path.join(legacyAgent, "SYSTEM.md"), "utf8")) === "legacy original system\n", "upgrade lost the original SYSTEM restore point");
+	const legacyRestoredRoles = await getRoles(legacyAgent);
+	assert(
+		legacyRestoredRoles.default === "legacy/default" && !legacyRestoredRoles.frontier && !legacyRestoredRoles.layer,
+		"upgrade lost the original model-role restore point",
+	);
+
 	const forceAgent = path.join(testRoot, "force-agent");
 	await setRoles(forceAgent, { default: "force/default", unrelated: "force/keep" });
 	await writeFile(path.join(forceAgent, "SYSTEM.md"), "force original\n");
@@ -154,7 +217,7 @@ try {
 	);
 	assert(!Bun.file(path.join(rollbackAgent, "research-harness-install.json")).size, "failed install left a manifest");
 
-	process.stdout.write("install_e2e=READY dry_run=clean install=transactional configure=custom rollback=verified uninstall=restored\n");
+	process.stdout.write("install_e2e=READY dry_run=clean install=transactional configure=custom upgrade=migrated rollback=verified uninstall=restored\n");
 } finally {
 	await rm(testRoot, { recursive: true, force: true });
 }

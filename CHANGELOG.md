@@ -8,6 +8,10 @@
   for decision-log artifacts, and automatic rollback when target-state validation fails.
 - Transition planning now covers the complete positive path, preserves N0-1/N0-2 as terminal
   outcomes, and rejects mutable state-pointer files passed as immutable decision-log hashes.
+- User-config status now detects roles added after the original install, and the transactional
+  `upgrade` action synchronizes new roles and SYSTEM without losing the uninstall restore point.
+- A deliberate transition to `BLOCKED` now commits state and STOP lock on its expected exit 2;
+  only invalid target-state transitions are rolled back.
 
 ## 0.0.3 - 2026-08-13
 

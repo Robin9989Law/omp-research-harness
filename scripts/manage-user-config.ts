@@ -249,6 +249,68 @@ async function configure(options: { dryRun: boolean; rolesFile?: string; roleOve
 	process.stdout.write(`Configured research harness model roles transactionally. manifest=${manifestPath}\n`);
 }
 
+async function upgrade(options: { dryRun: boolean; rolesFile?: string; roleOverrides: string[] }): Promise<void> {
+	const projectRoot = path.resolve(import.meta.dir, "..");
+	const packageJson = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8")) as { version: string };
+	const sourceBytes = await readFile(path.join(projectRoot, "SYSTEM.md"));
+	const agentDir = path.resolve(process.env.PI_CODING_AGENT_DIR?.trim() || path.join(homedir(), ".omp", "agent"));
+	const manifestPath = path.join(agentDir, MANIFEST_NAME);
+	if (!existsSync(manifestPath)) throw new Error(`research harness install manifest not found: ${manifestPath}`);
+	const manifestBytes = await readFile(manifestPath);
+	const manifest = await readManifest(manifestPath);
+	validateManifestScope(manifest, agentDir);
+	const currentRoles = await getModelRoles();
+	const currentSystem = existsSync(manifest.system_target) ? await readFile(manifest.system_target) : undefined;
+	const conflicts: string[] = [];
+	if (!currentSystem || sha256(currentSystem) !== manifest.installed_system_sha256) conflicts.push("SYSTEM.md changed after install");
+	for (const [role, installedValue] of Object.entries(manifest.managed_roles)) {
+		if (currentRoles[role] !== installedValue) conflicts.push(`modelRoles.${role} changed after install`);
+	}
+	if (conflicts.length) {
+		throw new Error(`upgrade refused because installed values drifted: ${conflicts.join("; ")}. Resolve the drift or reinstall explicitly.`);
+	}
+	const defaults = await resolveManagedRoles({ roleOverrides: [] });
+	const managedRoles = options.rolesFile || options.roleOverrides.length
+		? await resolveManagedRoles(options)
+		: { ...defaults, ...manifest.managed_roles };
+	const upgradedRoles = { ...currentRoles, ...managedRoles };
+	const upgradedManifest: InstallManifest = {
+		...manifest,
+		package_version: packageJson.version,
+		installed_system_sha256: sha256(sourceBytes),
+		managed_roles: managedRoles,
+	};
+	if (options.dryRun) {
+		process.stdout.write(`${JSON.stringify({
+			action: "upgrade",
+			dry_run: true,
+			packageVersion: packageJson.version,
+			managedRoles,
+			upgradedRoles,
+		}, null, 2)}\n`);
+		return;
+	}
+	try {
+		await atomicWrite(manifest.system_target, sourceBytes, 0o644);
+		if (process.env.RESEARCH_HARNESS_TEST_FAIL_AFTER === "system") throw new Error("simulated failure after SYSTEM.md upgrade");
+		await setModelRoles(upgradedRoles);
+		if (process.env.RESEARCH_HARNESS_TEST_FAIL_AFTER === "roles") throw new Error("simulated failure after modelRoles upgrade");
+		await atomicWrite(manifestPath, Buffer.from(`${JSON.stringify(upgradedManifest, null, 2)}\n`), 0o600);
+	} catch (error) {
+		const rollbackErrors: string[] = [];
+		if (currentSystem) {
+			await atomicWrite(manifest.system_target, currentSystem, 0o644).catch(value => rollbackErrors.push(String(value)));
+		} else await rm(manifest.system_target, { force: true }).catch(value => rollbackErrors.push(String(value)));
+		await setModelRoles(currentRoles).catch(value => rollbackErrors.push(String(value)));
+		await atomicWrite(manifestPath, manifestBytes, 0o600).catch(value => rollbackErrors.push(String(value)));
+		throw new Error(
+			`upgrade failed and installed user config was restored: ${error instanceof Error ? error.message : String(error)}` +
+			(rollbackErrors.length ? `; rollback errors: ${rollbackErrors.join("; ")}` : ""),
+		);
+	}
+	process.stdout.write(`Upgraded research harness user config transactionally. manifest=${manifestPath}\n`);
+}
+
 async function uninstall(options: { dryRun: boolean; force: boolean }): Promise<void> {
 	const agentDir = path.resolve(process.env.PI_CODING_AGENT_DIR?.trim() || path.join(homedir(), ".omp", "agent"));
 	const manifestPath = path.join(agentDir, MANIFEST_NAME);
@@ -301,6 +363,9 @@ async function uninstall(options: { dryRun: boolean; force: boolean }): Promise<
 }
 
 async function status(): Promise<void> {
+	const projectRoot = path.resolve(import.meta.dir, "..");
+	const packageJson = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8")) as { version: string };
+	const sourceSystem = await readFile(path.join(projectRoot, "SYSTEM.md"));
 	const agentDir = path.resolve(process.env.PI_CODING_AGENT_DIR?.trim() || path.join(homedir(), ".omp", "agent"));
 	const manifestPath = path.join(agentDir, MANIFEST_NAME);
 	if (!existsSync(manifestPath)) {
@@ -310,15 +375,32 @@ async function status(): Promise<void> {
 	const manifest = await readManifest(manifestPath);
 	validateManifestScope(manifest, agentDir);
 	const roles = await getModelRoles();
+	const defaultRoles = await resolveManagedRoles({ roleOverrides: [] });
+	const desiredRoles = { ...defaultRoles, ...manifest.managed_roles };
 	const systemMatches =
 		existsSync(manifest.system_target) && sha256(await readFile(manifest.system_target)) === manifest.installed_system_sha256;
+	const sourceSystemMatches =
+		existsSync(manifest.system_target) && sha256(await readFile(manifest.system_target)) === sha256(sourceSystem);
 	const roleDrift = Object.fromEntries(
-		Object.entries(manifest.managed_roles)
+		Object.entries(desiredRoles)
 			.filter(([role, value]) => roles[role] !== value)
 			.map(([role, value]) => [role, { expected: value, actual: roles[role] ?? null }]),
 	);
+	const missingManagedRoles = Object.keys(defaultRoles).filter(role => !Object.hasOwn(manifest.managed_roles, role));
+	const upgradeRequired =
+		manifest.package_version !== packageJson.version || !sourceSystemMatches || missingManagedRoles.length > 0 || Object.keys(roleDrift).length > 0;
 	process.stdout.write(
-		`${JSON.stringify({ installed: true, manifest: manifestPath, package_version: manifest.package_version, systemMatches, roleDrift }, null, 2)}\n`,
+		`${JSON.stringify({
+			installed: true,
+			manifest: manifestPath,
+			package_version: manifest.package_version,
+			source_package_version: packageJson.version,
+			systemMatches,
+			sourceSystemMatches,
+			missingManagedRoles,
+			roleDrift,
+			upgradeRequired,
+		}, null, 2)}\n`,
 	);
 }
 
@@ -352,15 +434,15 @@ for (let index = 0; index < rawArgs.length; index += 1) {
 const rolesRequested = Boolean(rolesFile || roleOverrides.length);
 if (
 	parseError ||
-	!["install", "configure", "uninstall", "status"].includes(action) ||
+	!["install", "configure", "upgrade", "uninstall", "status"].includes(action) ||
 	(force && action !== "uninstall") ||
-	(rolesRequested && !["install", "configure"].includes(action)) ||
+	(rolesRequested && !["install", "configure", "upgrade"].includes(action)) ||
 	(action === "configure" && !rolesRequested) ||
 	(action === "status" && dryRun)
 ) {
 	if (parseError) process.stderr.write(`${parseError}\n`);
 	process.stderr.write(
-		"Usage: install-user-config.sh [install|configure|uninstall|status] [--dry-run] [--force] [--roles-file PATH] [--role ROLE=MODEL]\n",
+		"Usage: install-user-config.sh [install|configure|upgrade|uninstall|status] [--dry-run] [--force] [--roles-file PATH] [--role ROLE=MODEL]\n",
 	);
 	process.exit(64);
 }
@@ -368,6 +450,7 @@ if (
 try {
 	if (action === "install") await install({ dryRun, rolesFile, roleOverrides });
 	else if (action === "configure") await configure({ dryRun, rolesFile, roleOverrides });
+	else if (action === "upgrade") await upgrade({ dryRun, rolesFile, roleOverrides });
 	else if (action === "uninstall") await uninstall({ dryRun, force });
 	else await status();
 } catch (error) {
