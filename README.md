@@ -145,8 +145,8 @@ OMP loader 和安装器。GitHub CI 会从固定 commit checkout 上游并运行
 npm trusted publishing/OIDC 附加 provenance，并在打包前验证 `repository.url` 与实际
 运行 workflow 的公开 GitHub 仓库精确一致。当前仓库不会因普通 push 或 tag 自动发布。
 
-npm 首次发布前还不存在 package，因而无法预先建立 trusted publisher：仅第一次在
-`npm-release` environment 临时配置具备 publish 权限的 granular `NPM_TOKEN`；发布后立即
-在 npm package settings 中把 `release.yml`、该 GitHub 仓库和 `npm-release` environment
-登记为 trusted publisher，删除 secret，后续即走纯 OIDC。workflow 未配置 token 时不会
-写入空 `_authToken`，避免阻断 OIDC exchange。
+npm 首次发布前还不存在 package，因而无法预先建立 trusted publisher。`0.0.1` 由维护者
+在本机通过 npm 的 WebAuthn/2FA 交互式创建；创建后立即把 `release.yml`、该 GitHub 仓库和
+`npm-release` environment 登记为 trusted publisher，并把 package publishing access 设为
+要求 2FA、拒绝传统 token。workflow 不接收或写入 `NPM_TOKEN`，后续发行只走短期 OIDC
+凭据并自动附加 provenance。

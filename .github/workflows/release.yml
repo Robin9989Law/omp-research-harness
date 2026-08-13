@@ -82,18 +82,6 @@ jobs:
         if: ${{ inputs.dry_run }}
         run: npm publish --dry-run --access public --tag "${{ inputs.dist_tag }}"
 
-      - name: Configure bootstrap token when present
-        if: ${{ ! inputs.dry_run }}
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          npm config set registry https://registry.npmjs.org --location=user
-          if [[ -n "$NPM_TOKEN" ]]; then
-            npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN" --location=user
-          else
-            npm config delete //registry.npmjs.org/:_authToken --location=user || true
-          fi
-
       - name: Publish to npm with provenance
         if: ${{ ! inputs.dry_run }}
         run: npm publish --provenance --access public --tag "${{ inputs.dist_tag }}"
