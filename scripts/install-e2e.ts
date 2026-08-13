@@ -68,9 +68,38 @@ try {
 		(await readFile(path.join(agentDir, "SYSTEM.md"), "utf8")) === (await readFile(path.join(projectRoot, "SYSTEM.md"), "utf8")),
 		"install did not deploy the harness SYSTEM.md",
 	);
-	const installedRoles = await getRoles(agentDir);
+	let installedRoles = await getRoles(agentDir);
 	assert(installedRoles.atomic === "deepseek/deepseek-v4-pro:high", "install did not set managed model roles");
 	assert(installedRoles.unrelated === "keep/me", "install clobbered an unrelated model role");
+	const customRolesFile = path.join(testRoot, "custom-roles.yml");
+	await writeFile(customRolesFile, "modelRoles:\n  review: user/custom-review:high\n");
+	const configureDryRun = await run(agentDir, [
+		"configure",
+		"--dry-run",
+		"--roles-file",
+		customRolesFile,
+		"--role",
+		"atomic=user/custom-atomic:max",
+	]);
+	assert(configureDryRun.exitCode === 0 && configureDryRun.stdout.includes('"action": "configure"'), `configure dry-run failed: ${configureDryRun.stderr}`);
+	assert((await getRoles(agentDir)).atomic === installedRoles.atomic, "configure dry-run changed model roles");
+	const configured = await run(agentDir, [
+		"configure",
+		"--roles-file",
+		customRolesFile,
+		"--role",
+		"atomic=user/custom-atomic:max",
+	]);
+	assert(configured.exitCode === 0, `configure failed: ${configured.stderr}`);
+	installedRoles = await getRoles(agentDir);
+	assert(installedRoles.atomic === "user/custom-atomic:max" && installedRoles.review === "user/custom-review:high", "configure did not apply custom roles");
+	const failedConfigure = await run(agentDir, ["configure", "--role", "atomic=user/rollback-test"], {
+		RESEARCH_HARNESS_TEST_FAIL_AFTER: "roles",
+	});
+	assert(failedConfigure.exitCode !== 0 && failedConfigure.stderr.includes("were restored"), "failed configure did not report rollback");
+	assert((await getRoles(agentDir)).atomic === installedRoles.atomic, "failed configure did not restore current model roles");
+	const unmanagedRole = await run(agentDir, ["configure", "--role", "task=user/not-managed"]);
+	assert(unmanagedRole.exitCode !== 0 && unmanagedRole.stderr.includes("unmanaged role"), "configure accepted an unmanaged role");
 	const status = await run(agentDir, ["status"]);
 	assert(status.exitCode === 0 && status.stdout.includes('"systemMatches": true'), `status failed: ${status.stderr}`);
 
@@ -121,7 +150,7 @@ try {
 	);
 	assert(!Bun.file(path.join(rollbackAgent, "research-harness-install.json")).size, "failed install left a manifest");
 
-	process.stdout.write("install_e2e=READY dry_run=clean install=transactional rollback=verified uninstall=restored\n");
+	process.stdout.write("install_e2e=READY dry_run=clean install=transactional configure=custom rollback=verified uninstall=restored\n");
 } finally {
 	await rm(testRoot, { recursive: true, force: true });
 }

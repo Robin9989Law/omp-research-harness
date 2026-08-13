@@ -5,13 +5,8 @@ import { homedir } from "node:os";
 import * as path from "node:path";
 
 const MANIFEST_NAME = "research-harness-install.json";
-const MANAGED_ROLES: Record<string, string> = {
-	default: "minimax-code-cn/MiniMax-M3:high",
-	atomic: "deepseek/deepseek-v4-pro:high",
-	collision: "deepseek/deepseek-v4-pro:high",
-	review: "deepseek/deepseek-v4-pro:high",
-	commit: "deepseek/deepseek-v4-flash:high",
-};
+const DEFAULT_ROLES_FILE = path.resolve(import.meta.dir, "..", "config", "model-roles.yml");
+const MANAGED_ROLE_NAMES = new Set(["default", "atomic", "collision", "review", "commit"]);
 
 interface InstallManifest {
 	schema_version: "1.0";
@@ -68,6 +63,53 @@ async function setModelRoles(roles: Record<string, unknown>): Promise<void> {
 	await runOmp(["config", "set", "modelRoles", JSON.stringify(roles)]);
 }
 
+function validateManagedRoles(value: unknown, source: string): Record<string, string> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${source} must contain a modelRoles object`);
+	const candidate = "modelRoles" in value ? (value as { modelRoles?: unknown }).modelRoles : value;
+	if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+		throw new Error(`${source} must contain a modelRoles object`);
+	}
+	const roles: Record<string, string> = {};
+	for (const [role, selector] of Object.entries(candidate)) {
+		if (!MANAGED_ROLE_NAMES.has(role)) {
+			throw new Error(`${source} contains an unmanaged role: ${role}; allowed roles: ${[...MANAGED_ROLE_NAMES].join(", ")}`);
+		}
+		if (typeof selector !== "string" || !selector.trim()) throw new Error(`${source} has an empty model selector for ${role}`);
+		roles[role] = selector.trim();
+	}
+	return roles;
+}
+
+async function loadRolesFile(filePath: string): Promise<Record<string, string>> {
+	const resolved = path.resolve(filePath);
+	const contents = await readFile(resolved, "utf8");
+	let value: unknown;
+	try {
+		value = resolved.endsWith(".json") ? JSON.parse(contents) : Bun.YAML.parse(contents);
+	} catch (error) {
+		throw new Error(`cannot parse model roles file ${resolved}: ${error instanceof Error ? error.message : String(error)}`);
+	}
+	return validateManagedRoles(value, resolved);
+}
+
+async function resolveManagedRoles(options: { rolesFile?: string; roleOverrides: string[] }): Promise<Record<string, string>> {
+	const defaults = await loadRolesFile(DEFAULT_ROLES_FILE);
+	const fromFile = options.rolesFile ? await loadRolesFile(options.rolesFile) : {};
+	const overrides: Record<string, string> = {};
+	for (const assignment of options.roleOverrides) {
+		const separator = assignment.indexOf("=");
+		if (separator <= 0) throw new Error(`invalid --role value: ${assignment}; expected role=model-selector`);
+		const role = assignment.slice(0, separator).trim();
+		const selector = assignment.slice(separator + 1).trim();
+		Object.assign(overrides, validateManagedRoles({ [role]: selector }, "--role"));
+	}
+	const roles = { ...defaults, ...fromFile, ...overrides };
+	for (const role of MANAGED_ROLE_NAMES) {
+		if (!roles[role]) throw new Error(`model role ${role} has no configured selector`);
+	}
+	return roles;
+}
+
 async function readManifest(manifestPath: string): Promise<InstallManifest> {
 	const value = JSON.parse(await readFile(manifestPath, "utf8")) as Partial<InstallManifest>;
 	const rolesBeforeIsObject =
@@ -117,7 +159,7 @@ async function restoreSystem(manifest: InstallManifest): Promise<void> {
 	}
 }
 
-async function install(options: { dryRun: boolean }): Promise<void> {
+async function install(options: { dryRun: boolean; rolesFile?: string; roleOverrides: string[] }): Promise<void> {
 	const projectRoot = path.resolve(import.meta.dir, "..");
 	const packageJson = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8")) as { version: string };
 	const sourceSystem = path.join(projectRoot, "SYSTEM.md");
@@ -126,8 +168,9 @@ async function install(options: { dryRun: boolean }): Promise<void> {
 	const systemTarget = path.join(agentDir, "SYSTEM.md");
 	const manifestPath = path.join(agentDir, MANIFEST_NAME);
 	if (existsSync(manifestPath)) throw new Error(`research harness is already installed: ${manifestPath}`);
+	const managedRoles = await resolveManagedRoles(options);
 	const rolesBefore = await getModelRoles();
-	const rolesAfter = { ...rolesBefore, ...MANAGED_ROLES };
+	const rolesAfter = { ...rolesBefore, ...managedRoles };
 	const systemExisted = existsSync(systemTarget);
 	const transactionId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID()}`;
 	const backupDir = path.join(agentDir, "backups", `research-harness-${transactionId}`);
@@ -141,7 +184,7 @@ async function install(options: { dryRun: boolean }): Promise<void> {
 		...(systemExisted ? { system_backup: backupPath } : {}),
 		installed_system_sha256: sha256(sourceBytes),
 		model_roles_before: rolesBefore,
-		managed_roles: MANAGED_ROLES,
+		managed_roles: managedRoles,
 	};
 	if (options.dryRun) {
 		process.stdout.write(`${JSON.stringify({ action: "install", dry_run: true, systemTarget, systemExisted, rolesAfter }, null, 2)}\n`);
@@ -175,6 +218,35 @@ async function install(options: { dryRun: boolean }): Promise<void> {
 				(rollbackErrors.length ? `; rollback errors: ${rollbackErrors.join("; ")}` : ""),
 		);
 	}
+}
+
+async function configure(options: { dryRun: boolean; rolesFile?: string; roleOverrides: string[] }): Promise<void> {
+	const agentDir = path.resolve(process.env.PI_CODING_AGENT_DIR?.trim() || path.join(homedir(), ".omp", "agent"));
+	const manifestPath = path.join(agentDir, MANIFEST_NAME);
+	if (!existsSync(manifestPath)) throw new Error(`research harness install manifest not found: ${manifestPath}`);
+	const manifest = await readManifest(manifestPath);
+	validateManifestScope(manifest, agentDir);
+	const managedRoles = await resolveManagedRoles(options);
+	const currentRoles = await getModelRoles();
+	const configuredRoles = { ...currentRoles, ...managedRoles };
+	const configuredManifest: InstallManifest = { ...manifest, managed_roles: managedRoles };
+	if (options.dryRun) {
+		process.stdout.write(`${JSON.stringify({ action: "configure", dry_run: true, managedRoles, configuredRoles }, null, 2)}\n`);
+		return;
+	}
+	try {
+		await setModelRoles(configuredRoles);
+		if (process.env.RESEARCH_HARNESS_TEST_FAIL_AFTER === "roles") throw new Error("simulated failure after modelRoles configure");
+		await atomicWrite(manifestPath, Buffer.from(`${JSON.stringify(configuredManifest, null, 2)}\n`), 0o600);
+	} catch (error) {
+		const rollbackErrors: string[] = [];
+		await setModelRoles(currentRoles).catch(value => rollbackErrors.push(String(value)));
+		throw new Error(
+			`configure failed and model roles were restored: ${error instanceof Error ? error.message : String(error)}` +
+				(rollbackErrors.length ? `; rollback errors: ${rollbackErrors.join("; ")}` : ""),
+		);
+	}
+	process.stdout.write(`Configured research harness model roles transactionally. manifest=${manifestPath}\n`);
 }
 
 async function uninstall(options: { dryRun: boolean; force: boolean }): Promise<void> {
@@ -252,16 +324,50 @@ async function status(): Promise<void> {
 
 const rawArgs = process.argv.slice(2);
 const action = rawArgs[0]?.startsWith("-") || !rawArgs[0] ? "install" : rawArgs.shift()!;
-const dryRun = rawArgs.includes("--dry-run");
-const force = rawArgs.includes("--force");
-const unknown = rawArgs.filter(value => value !== "--dry-run" && value !== "--force");
-if (unknown.length || !["install", "uninstall", "status"].includes(action) || (force && action !== "uninstall")) {
-	process.stderr.write("Usage: install-user-config.sh [install|uninstall|status] [--dry-run] [--force]\n");
+let dryRun = false;
+let force = false;
+let rolesFile: string | undefined;
+const roleOverrides: string[] = [];
+let parseError = "";
+for (let index = 0; index < rawArgs.length; index += 1) {
+	const argument = rawArgs[index]!;
+	if (argument === "--dry-run") dryRun = true;
+	else if (argument === "--force") force = true;
+	else if (argument === "--roles-file" || argument === "--role") {
+		const value = rawArgs[index + 1];
+		if (!value || value.startsWith("--")) {
+			parseError = `${argument} requires a value`;
+			break;
+		}
+		index += 1;
+		if (argument === "--roles-file") {
+			if (rolesFile) parseError = "--roles-file may only be specified once";
+			rolesFile = value;
+		} else roleOverrides.push(value);
+	} else {
+		parseError = `unknown option: ${argument}`;
+		break;
+	}
+}
+const rolesRequested = Boolean(rolesFile || roleOverrides.length);
+if (
+	parseError ||
+	!["install", "configure", "uninstall", "status"].includes(action) ||
+	(force && action !== "uninstall") ||
+	(rolesRequested && !["install", "configure"].includes(action)) ||
+	(action === "configure" && !rolesRequested) ||
+	(action === "status" && dryRun)
+) {
+	if (parseError) process.stderr.write(`${parseError}\n`);
+	process.stderr.write(
+		"Usage: install-user-config.sh [install|configure|uninstall|status] [--dry-run] [--force] [--roles-file PATH] [--role ROLE=MODEL]\n",
+	);
 	process.exit(64);
 }
 
 try {
-	if (action === "install") await install({ dryRun });
+	if (action === "install") await install({ dryRun, rolesFile, roleOverrides });
+	else if (action === "configure") await configure({ dryRun, rolesFile, roleOverrides });
 	else if (action === "uninstall") await uninstall({ dryRun, force });
 	else await status();
 } catch (error) {

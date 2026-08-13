@@ -11,3 +11,4 @@
   完整回归 CI。
 - 增加受审批保护的 npm trusted publishing/provenance 手动发布流程。
 - 原子观点、文献碰撞与独立复核统一路由到已完成真实调用验收的 DeepSeek V4 Pro。
+- 开放五个 harness 模型角色的 YAML/JSON、CLI 覆盖和事务化在线重配置。

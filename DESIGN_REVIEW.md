@@ -35,4 +35,5 @@
 - 研究模式每轮注入唯一状态；引导模式只提示 bootstrap，不自行选路径。
 - `tsc --strict`、真实 OMP loader/tool/hook E2E、插件 doctor 与上游完整 pytest 进入 CI。
 - 用户配置安装以 manifest 为事务边界，失败自动回滚 SYSTEM/model roles；卸载检测受管
-  值漂移并保留无关的后续配置。公开包在 prepack 重跑全检查并启用 npm provenance。
+  值漂移并保留无关的后续配置；五个 harness 模型角色支持文件/CLI 自定义及事务化重配置。
+  公开包在 prepack 重跑全检查并启用 npm provenance。

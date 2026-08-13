@@ -64,7 +64,9 @@ manifest；任一步失败都会恢复两者。卸载默认拒绝覆盖安装后
 上述命令只管理用户配置，不隐式安装或删除插件。
 插件仍需通过 `omp plugin link .`（开发）或 `omp plugin install <package>`（发布）安装。
 
-## 模型角色
+## 模型角色自定义
+
+默认值来自随包的 `config/model-roles.yml`：
 
 ```yaml
 modelRoles:
@@ -75,7 +77,28 @@ modelRoles:
   commit: deepseek/deepseek-v4-flash:high
 ```
 
-角色只是路由；对应 provider 凭据不可用时必须 BLOCKED，不能换模型伪造独立复核。
+安装时可用 YAML/JSON 文件局部覆盖，也可重复使用 `--role`；命令行优先于文件，文件优先于
+默认值：
+
+```bash
+./scripts/install-user-config.sh install \
+  --roles-file /path/to/my-model-roles.yml \
+  --role atomic=deepseek/deepseek-v4-pro:max
+```
+
+已安装后无需卸载，可事务化更新。以下命令只改变指定模型配置，其他 OMP roles 原样保留；
+如果写入或 manifest 更新失败，会恢复更新前值：
+
+```bash
+./scripts/install-user-config.sh configure --dry-run \
+  --role review=deepseek/deepseek-v4-pro:max
+./scripts/install-user-config.sh configure \
+  --role review=deepseek/deepseek-v4-pro:max
+./scripts/install-user-config.sh status
+```
+
+允许自定义的 harness roles 为 `default`、`atomic`、`collision`、`review`、`commit`。角色只是
+路由；对应 provider 凭据不可用时必须 BLOCKED，不能自动换模型伪造独立复核。
 
 ## 两种模式
 
