@@ -55,6 +55,15 @@ interface SubagentLifecycleRecord {
 	agent: string;
 	status: "started" | "completed" | "failed" | "aborted";
 	sessionFile: string;
+	parentToolCallId?: string;
+	researchRoot?: string;
+	target?: string;
+}
+
+interface SpecialistDispatchBinding {
+	researchRoot: string;
+	target: string;
+	agents: Set<string>;
 }
 
 interface SkillLockResult {
@@ -441,7 +450,7 @@ function normalizedSessionFile(sessionFile: string): string {
 	return path.resolve(sessionFile);
 }
 
-export function recordSubagentLifecycle(payload: unknown): void {
+export function recordSubagentLifecycle(payload: unknown, binding?: SpecialistDispatchBinding): void {
 	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
 	const candidate = payload as Record<string, unknown>;
 	if (
@@ -460,6 +469,9 @@ export function recordSubagentLifecycle(payload: unknown): void {
 		agent: candidate.agent,
 		status: candidate.status as SubagentLifecycleRecord["status"],
 		sessionFile,
+		parentToolCallId: text(candidate.parentToolCallId) || undefined,
+		researchRoot: binding?.agents.has(candidate.agent) ? binding.researchRoot : undefined,
+		target: binding?.agents.has(candidate.agent) ? binding.target : undefined,
 	});
 }
 
@@ -634,11 +646,63 @@ export function mutableArtifactConflicts(artifacts: string[], assignments: strin
 	return [...conflicts].sort();
 }
 
-function completedSpecialist(agentId: string, expectedAgent: string): boolean {
-	for (const record of runtimeRegistry().values()) {
-		if (record.id === agentId && record.agent === expectedAgent && record.status === "completed") return true;
+function matchingSpecialistRecord(
+	agentId: string,
+	expectedAgent: string,
+	researchRoot: string,
+	target: string,
+): SubagentLifecycleRecord | undefined {
+	return [...runtimeRegistry().values()].find(record =>
+		record.id === agentId &&
+		record.agent === expectedAgent &&
+		record.researchRoot === researchRoot &&
+		record.target === target
+	);
+}
+
+export function inspectSpecialistCompletion(
+	agentId: string,
+	expectedAgent: string,
+	researchRoot: string,
+	target: string,
+): { completed: boolean; status: string; diagnosis: string } {
+	const exact = matchingSpecialistRecord(agentId, expectedAgent, researchRoot, target);
+	if (exact) {
+		return {
+			completed: exact.status === "completed",
+			status: exact.status,
+			diagnosis: `${agentId} is ${exact.status} and bound to ${target} at ${researchRoot}`,
+		};
 	}
-	return false;
+	const sameId = [...runtimeRegistry().values()].find(record => record.id === agentId);
+	if (sameId) {
+		return {
+			completed: false,
+			status: "binding_mismatch",
+			diagnosis: `${agentId} was observed as ${sameId.agent}/${sameId.status} but is not bound to ${target} at ${researchRoot}`,
+		};
+	}
+	return { completed: false, status: "not_observed", diagnosis: `${agentId} has no authenticated task lifecycle record` };
+}
+
+export async function waitForSpecialistCompletion(
+	agentId: string,
+	expectedAgent: string,
+	researchRoot: string,
+	target: string,
+	signal: AbortSignal | undefined,
+	timeoutMs = 30_000,
+): Promise<{ completed: boolean; status: string; diagnosis: string }> {
+	const deadline = Date.now() + timeoutMs;
+	let inspection = inspectSpecialistCompletion(agentId, expectedAgent, researchRoot, target);
+	while (inspection.status === "started" && Date.now() < deadline && !signal?.aborted) {
+		await new Promise(resolve => setTimeout(resolve, 100));
+		inspection = inspectSpecialistCompletion(agentId, expectedAgent, researchRoot, target);
+	}
+	if (inspection.status === "started") {
+		return { ...inspection, diagnosis: `${inspection.diagnosis}; timed out waiting ${timeoutMs}ms for formal completion` };
+	}
+	return inspection;
 }
 
 async function captureFileTransaction(root: string): Promise<FileTransactionSnapshot> {
@@ -1462,7 +1526,18 @@ export default function iphExtension(pi: ExtensionAPI) {
 	const z = pi.zod;
 	const lastStopFingerprint = new Map<string, string>();
 	const pendingSnapshots = new Map<string, ProtectedSnapshot>();
-	const unsubscribeLifecycle = pi.events.on(SUBAGENT_LIFECYCLE_CHANNEL, recordSubagentLifecycle);
+	const specialistDispatches = new Map<string, SpecialistDispatchBinding>();
+	const unsubscribeLifecycle = pi.events.on(SUBAGENT_LIFECYCLE_CHANNEL, payload => {
+		const candidate = payload && typeof payload === "object" && !Array.isArray(payload)
+			? payload as Record<string, unknown>
+			: undefined;
+		const parentToolCallId = text(candidate?.parentToolCallId);
+		const binding = parentToolCallId ? specialistDispatches.get(parentToolCallId) : undefined;
+		recordSubagentLifecycle(payload, binding);
+		if (parentToolCallId && ["completed", "failed", "aborted"].includes(text(candidate?.status))) {
+			specialistDispatches.delete(parentToolCallId);
+		}
+	});
 	pi.on("session_shutdown", () => unsubscribeLifecycle());
 
 	const rootField = z.string().optional().describe("Research root; defaults to the nearest ancestor containing workflow_state.json");
@@ -1681,11 +1756,26 @@ export default function iphExtension(pi: ExtensionAPI) {
 				));
 			}
 			const requiredSpecialist = requiredSpecialistForTarget(input.to);
-			if (requiredSpecialist && (!input.specialistAgentId || !completedSpecialist(input.specialistAgentId, requiredSpecialist))) {
-				return toolResult(blockedResult(
+			if (requiredSpecialist) {
+				if (!input.specialistAgentId) {
+					return toolResult(blockedResult(
+						root,
+						`transition to ${input.to} requires a completed ${requiredSpecialist} task and its exact specialistAgentId`,
+					));
+				}
+				const completion = await waitForSpecialistCompletion(
+					input.specialistAgentId,
+					requiredSpecialist,
 					root,
-					`transition to ${input.to} requires a completed ${requiredSpecialist} task and its exact specialistAgentId`,
-				));
+					input.to,
+					signal,
+				);
+				if (!completion.completed) {
+					return toolResult(blockedResult(
+						root,
+						`transition to ${input.to} requires authenticated ${requiredSpecialist} completion: ${completion.diagnosis}`,
+					));
+				}
 			}
 			const args = ["--to", input.to, "--note", input.note, "--next-action", input.nextAction];
 			if (input.strict) args.push("--strict-new-checks");
@@ -1974,6 +2064,20 @@ export default function iphExtension(pi: ExtensionAPI) {
 					block: true,
 					reason: `Cannot establish protected-artifact snapshot; failing closed: ${error instanceof Error ? error.message : String(error)}`,
 				};
+			}
+		}
+		if (event.toolName === "task") {
+			const effectiveInput = (sanitizedSpecialistTask ?? event.input) as Record<string, unknown>;
+			const tasks = Array.isArray(effectiveInput.tasks) ? effectiveInput.tasks : [];
+			const plan = transitionPlanForState(state);
+			const agents = new Set(tasks.flatMap(item => {
+				if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+				const agent = text((item as Record<string, unknown>).agent);
+				return SPECIALIST_TASK_AGENTS.has(agent) && agent === plan?.specialist ? [agent] : [];
+			}));
+			const target = text(plan?.target);
+			if (agents.size > 0 && target) {
+				specialistDispatches.set(event.toolCallId, { researchRoot: root, target, agents });
 			}
 		}
 		if (sanitizedSpecialistTask) return { input: sanitizedSpecialistTask };

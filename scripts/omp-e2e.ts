@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { loadExtensions } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
 import type { ExtensionContext, ToolCallEvent, ToolResultEvent } from "@oh-my-pi/pi-coding-agent";
 import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
-import { validateLifecycleState } from "../extensions/iph";
+import { inspectSpecialistCompletion, validateLifecycleState } from "../extensions/iph";
 
 function assert(condition: unknown, message: string): asserts condition {
 	if (!condition) throw new Error(message);
@@ -356,7 +356,46 @@ try {
 	assert(Array.isArray(resumedState.blocked_reasons) && resumedState.blocked_reasons.length === 0, "BLOCKED reasons survived recovery");
 	assert(!existsSync(path.join(root, ".workflow_stop.lock")), "successful BLOCKED resume retained STOP lock");
 
-	process.stdout.write("omp_e2e=READY loader=real tools=11 hooks=rollback specialist-schema=sanitized transition=transactional blocked=committed+resumed frozen=decision-log mutable=guarded recovery=artifact-map root=nested reviewer=lifecycle\n");
+	resumedState.active_state = "PRIOR_CLAIM_DRAIN";
+	resumedState.resume_state = "PRIOR_CLAIM_DRAIN";
+	await writeFile(statePath, `${JSON.stringify(resumedState, null, 2)}\n`);
+	const specialistCall = {
+		type: "tool_call",
+		toolCallId: "frontier-runtime-binding",
+		toolName: "task",
+		input: {
+			context: "verify frontier artifacts",
+			tasks: [{ name: "FrontierRuntime", agent: "frontier-auditor", task: "audit" }],
+		},
+	} satisfies ToolCallEvent;
+	await toolCallHandlers[0]!(specialistCall, main);
+	const specialistSessionFile = path.join(root, "frontier-runtime.jsonl");
+	for (const status of ["started", "completed"] as const) {
+		eventBus.emit("task:subagent:lifecycle", {
+			id: "FrontierRuntime",
+			agent: "frontier-auditor",
+			agentSource: "project",
+			status,
+			sessionFile: specialistSessionFile,
+			parentToolCallId: specialistCall.toolCallId,
+			index: 0,
+		});
+	}
+	assert(
+		inspectSpecialistCompletion("FrontierRuntime", "frontier-auditor", root, "RECENT_FRONTIER").completed,
+		"real task hook and lifecycle bus did not produce a root/target-bound specialist completion",
+	);
+	await toolResultHandlers[0]!({
+		type: "tool_result",
+		toolCallId: specialistCall.toolCallId,
+		toolName: specialistCall.toolName,
+		input: specialistCall.input,
+		content: [{ type: "text", text: "specialist completed" }],
+		details: {},
+		isError: false,
+	} satisfies ToolResultEvent, main);
+
+	process.stdout.write("omp_e2e=READY loader=real tools=11 hooks=rollback specialist-schema=sanitized specialist=lifecycle-bound transition=transactional blocked=committed+resumed frozen=decision-log mutable=guarded recovery=artifact-map root=nested reviewer=lifecycle\n");
 } finally {
 	await rm(root, { recursive: true, force: true });
 }

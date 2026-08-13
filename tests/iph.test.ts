@@ -12,6 +12,7 @@ import {
 	executableText,
 	findResearchRoot,
 	inspectStopLock,
+	inspectSpecialistCompletion,
 	mutableArtifactConflicts,
 	recordSubagentLifecycle,
 	POSITIVE_STATE_SEQUENCE,
@@ -25,6 +26,7 @@ import {
 	transitionPlanForState,
 	validateLifecycleState,
 	verifySkillLock,
+	waitForSpecialistCompletion,
 } from "../extensions/iph";
 
 describe("exit status translation", () => {
@@ -71,6 +73,69 @@ describe("read-only STOP visibility", () => {
 });
 
 describe("M3 control-plane routing", () => {
+	test("accepts only formally completed specialists bound to the exact root and target", () => {
+		clearRuntimeRegistryForTests();
+		const binding = {
+			researchRoot: "/tmp/research-a",
+			target: "RECENT_FRONTIER",
+			agents: new Set(["frontier-auditor"]),
+		};
+		recordSubagentLifecycle({
+			id: "FrontierAudit",
+			agent: "frontier-auditor",
+			status: "started",
+			sessionFile: "/tmp/frontier-a.jsonl",
+			parentToolCallId: "task-call-1",
+		}, binding);
+		expect(inspectSpecialistCompletion(
+			"FrontierAudit", "frontier-auditor", "/tmp/research-a", "RECENT_FRONTIER",
+		).status).toBe("started");
+		recordSubagentLifecycle({
+			id: "FrontierAudit",
+			agent: "frontier-auditor",
+			status: "completed",
+			sessionFile: "/tmp/frontier-a.jsonl",
+			parentToolCallId: "task-call-1",
+		}, binding);
+		expect(inspectSpecialistCompletion(
+			"FrontierAudit", "frontier-auditor", "/tmp/research-a", "RECENT_FRONTIER",
+		).completed).toBeTrue();
+		expect(inspectSpecialistCompletion(
+			"FrontierAudit", "frontier-auditor", "/tmp/research-b", "RECENT_FRONTIER",
+		).status).toBe("binding_mismatch");
+		expect(inspectSpecialistCompletion(
+			"FrontierAudit", "frontier-auditor", "/tmp/research-a", "LITERATURE_REGISTER",
+		).status).toBe("binding_mismatch");
+	});
+
+	test("waits through the PASS-message versus formal-completion race", async () => {
+		clearRuntimeRegistryForTests();
+		const binding = {
+			researchRoot: "/tmp/research-race",
+			target: "RECENT_FRONTIER",
+			agents: new Set(["frontier-auditor"]),
+		};
+		const lifecycle = (status: "started" | "completed") => recordSubagentLifecycle({
+			id: "FrontierRace",
+			agent: "frontier-auditor",
+			status,
+			sessionFile: "/tmp/frontier-race.jsonl",
+			parentToolCallId: "task-race",
+		}, binding);
+		lifecycle("started");
+		setTimeout(() => lifecycle("completed"), 25);
+		const result = await waitForSpecialistCompletion(
+			"FrontierRace",
+			"frontier-auditor",
+			"/tmp/research-race",
+			"RECENT_FRONTIER",
+			undefined,
+			500,
+		);
+		expect(result.completed).toBeTrue();
+		expect(result.status).toBe("completed");
+	});
+
 	test("covers the complete positive state topology with no contract gaps", () => {
 		expect(POSITIVE_STATE_SEQUENCE).toHaveLength(23);
 		expect(POSITIVE_STATE_SEQUENCE[0]).toBe("BOOT");
