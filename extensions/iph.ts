@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, readlink, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
@@ -27,7 +27,10 @@ interface WorkflowState {
 	claim_bundle_sha256?: unknown;
 	blocked_reasons?: unknown;
 	gates?: Record<string, unknown>;
+	artifacts?: Record<string, unknown>;
 	independent_audit?: Record<string, unknown>;
+	review_artifact_sha256?: unknown;
+	updated_at?: unknown;
 }
 
 interface IphRunResult {
@@ -39,9 +42,38 @@ interface IphRunResult {
 	skillDir?: string;
 }
 
+interface ReviewerRuntimeIdentity {
+	reviewerAgentId: string;
+	reviewerThreadId: string;
+	sessionFile: string;
+}
+
+interface SubagentLifecycleRecord {
+	id: string;
+	agent: string;
+	status: "started" | "completed" | "failed" | "aborted";
+	sessionFile: string;
+}
+
+type ProtectedEntry =
+	| { kind: "file"; bytes: Uint8Array }
+	| { kind: "directory" }
+	| { kind: "symlink"; target: string };
+
+interface ProtectedSnapshot {
+	root: string;
+	includeReview: boolean;
+	allowNewReviewFiles: boolean;
+	reviewFiles: string[];
+	entries: Map<string, ProtectedEntry>;
+}
+
 const WORKFLOW_FILE = "workflow_state.json";
 const LIFECYCLE_FILE = "lifecycle_state.json";
 const REVIEW_DIR = "review_artifacts";
+const REVIEWER_AGENT = "iph-reviewer";
+const SUBAGENT_LIFECYCLE_CHANNEL = "task:subagent:lifecycle";
+const RUNTIME_REGISTRY_KEY = Symbol.for("omp-research-harness.reviewer-runtime-registry.v1");
 const CLI_SUBCOMMANDS = new Set([
 	"validate",
 	"advance",
@@ -51,6 +83,17 @@ const CLI_SUBCOMMANDS = new Set([
 	"clear-lock",
 	"register-exploration",
 	"handover",
+]);
+const IPH_TOOL_NAMES = new Set([
+	"iph_bootstrap",
+	"iph_validate",
+	"iph_advance",
+	"iph_start_collision_round",
+	"iph_repair_collision_round",
+	"iph_review",
+	"iph_clear_lock",
+	"iph_register_exploration",
+	"iph_handover",
 ]);
 
 const NOVELTY_STATES = new Set([
@@ -83,6 +126,56 @@ const VALIDITY_STATES = new Set([
 
 function text(value: unknown): string {
 	return typeof value === "string" ? value : "";
+}
+
+function runtimeRegistry(): Map<string, SubagentLifecycleRecord> {
+	const scope = globalThis as unknown as Record<symbol, unknown>;
+	const existing = scope[RUNTIME_REGISTRY_KEY];
+	if (existing instanceof Map) return existing as Map<string, SubagentLifecycleRecord>;
+	const created = new Map<string, SubagentLifecycleRecord>();
+	scope[RUNTIME_REGISTRY_KEY] = created;
+	return created;
+}
+
+function normalizedSessionFile(sessionFile: string): string {
+	return path.resolve(sessionFile);
+}
+
+export function recordSubagentLifecycle(payload: unknown): void {
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
+	const candidate = payload as Record<string, unknown>;
+	if (
+		typeof candidate.id !== "string" ||
+		typeof candidate.agent !== "string" ||
+		typeof candidate.sessionFile !== "string" ||
+		!(["started", "completed", "failed", "aborted"] as const).includes(
+			candidate.status as SubagentLifecycleRecord["status"],
+		)
+	) {
+		return;
+	}
+	const sessionFile = normalizedSessionFile(candidate.sessionFile);
+	runtimeRegistry().set(sessionFile, {
+		id: candidate.id,
+		agent: candidate.agent,
+		status: candidate.status as SubagentLifecycleRecord["status"],
+		sessionFile,
+	});
+}
+
+export function clearRuntimeRegistryForTests(): void {
+	runtimeRegistry().clear();
+}
+
+export function runtimeReviewerIdentity(
+	sessionFile: string | undefined,
+	threadId: string | undefined,
+): ReviewerRuntimeIdentity | undefined {
+	if (!sessionFile || !threadId) return undefined;
+	const normalized = normalizedSessionFile(sessionFile);
+	const record = runtimeRegistry().get(normalized);
+	if (!record || record.agent !== REVIEWER_AGENT || record.status !== "started") return undefined;
+	return { reviewerAgentId: record.id, reviewerThreadId: threadId, sessionFile: normalized };
 }
 
 function resolveRoot(cwd: string, requested?: string): string {
@@ -132,6 +225,129 @@ async function atomicWriteJson(filePath: string, value: unknown): Promise<void> 
 	} finally {
 		await rm(temporary, { force: true }).catch(() => undefined);
 	}
+}
+
+async function atomicWriteBytes(filePath: string, value: Uint8Array): Promise<void> {
+	await mkdir(path.dirname(filePath), { recursive: true });
+	const temporary = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${randomUUID()}.tmp`);
+	try {
+		await writeFile(temporary, value, { flag: "wx" });
+		await rename(temporary, filePath);
+	} finally {
+		await rm(temporary, { force: true }).catch(() => undefined);
+	}
+}
+
+function canonicalRelativePath(relative: string): boolean {
+	if (!relative || path.isAbsolute(relative) || relative.includes("\\") || relative.includes("\0")) return false;
+	const normalized = path.posix.normalize(relative);
+	return normalized === relative && normalized !== ".." && !normalized.startsWith("../");
+}
+
+async function captureEntry(root: string, relative: string, entries: Map<string, ProtectedEntry>): Promise<void> {
+	const absolute = path.join(root, relative);
+	let metadata;
+	try {
+		metadata = await lstat(absolute);
+	} catch (error) {
+		if ((error as { code?: string }).code === "ENOENT") return;
+		throw error;
+	}
+	if (metadata.isSymbolicLink()) {
+		entries.set(relative, { kind: "symlink", target: await readlink(absolute) });
+		return;
+	}
+	const [realRoot, realEntry] = await Promise.all([realpath(root), realpath(absolute)]);
+	const expected = path.join(realRoot, ...relative.split("/"));
+	if (realEntry !== expected) throw new Error(`protected path crosses a symlink ancestor: ${relative}`);
+	if (metadata.isDirectory()) {
+		entries.set(relative, { kind: "directory" });
+		const children = await readdir(absolute);
+		for (const child of children.sort()) await captureEntry(root, path.posix.join(relative, child), entries);
+		return;
+	}
+	if (!metadata.isFile()) throw new Error(`protected path is not a regular file: ${relative}`);
+	entries.set(relative, { kind: "file", bytes: await readFile(absolute) });
+}
+
+export async function captureProtectedSnapshot(
+	root: string,
+	includeReview: boolean,
+	allowNewReviewFiles = false,
+	configuredAuditPath?: string,
+): Promise<ProtectedSnapshot> {
+	const entries = new Map<string, ProtectedEntry>();
+	await captureEntry(root, WORKFLOW_FILE, entries);
+	const reviewFiles = ["independent_audit.json"];
+	if (
+		configuredAuditPath &&
+		canonicalRelativePath(configuredAuditPath) &&
+		configuredAuditPath !== "independent_audit.json" &&
+		!configuredAuditPath.startsWith(`${REVIEW_DIR}/`)
+	) {
+		reviewFiles.push(configuredAuditPath);
+	}
+	if (includeReview) {
+		for (const relative of reviewFiles) await captureEntry(root, relative, entries);
+		await captureEntry(root, REVIEW_DIR, entries);
+	}
+	return { root, includeReview, allowNewReviewFiles, reviewFiles, entries };
+}
+
+function protectedEntryEqual(left: ProtectedEntry | undefined, right: ProtectedEntry | undefined): boolean {
+	if (!left || !right || left.kind !== right.kind) return false;
+	if (left.kind === "directory" && right.kind === "directory") return true;
+	if (left.kind === "symlink" && right.kind === "symlink") return left.target === right.target;
+	if (left.kind === "file" && right.kind === "file") {
+		return Buffer.from(left.bytes).equals(Buffer.from(right.bytes));
+	}
+	return false;
+}
+
+async function currentProtectedSnapshot(snapshot: ProtectedSnapshot): Promise<ProtectedSnapshot> {
+	const configured = snapshot.reviewFiles.find(relative => relative !== "independent_audit.json");
+	return captureProtectedSnapshot(snapshot.root, snapshot.includeReview, snapshot.allowNewReviewFiles, configured);
+}
+
+export async function restoreProtectedSnapshot(snapshot: ProtectedSnapshot): Promise<string[]> {
+	const current = await currentProtectedSnapshot(snapshot);
+	const changed = new Set<string>();
+	for (const relative of new Set([...snapshot.entries.keys(), ...current.entries.keys()])) {
+		const newlyCreated = !snapshot.entries.has(relative) ? current.entries.get(relative) : undefined;
+		if (
+			snapshot.allowNewReviewFiles &&
+			relative.startsWith(`${REVIEW_DIR}/`) &&
+			newlyCreated &&
+			newlyCreated.kind !== "symlink"
+		) {
+			continue;
+		}
+		if (!protectedEntryEqual(snapshot.entries.get(relative), current.entries.get(relative))) changed.add(relative);
+	}
+	if (changed.size === 0) return [];
+
+	await rm(path.join(snapshot.root, WORKFLOW_FILE), { recursive: true, force: true });
+	if (snapshot.includeReview) {
+		for (const relative of snapshot.reviewFiles) {
+			await rm(path.join(snapshot.root, relative), { recursive: true, force: true });
+		}
+		await rm(path.join(snapshot.root, REVIEW_DIR), { recursive: true, force: true });
+	}
+
+	const ordered = [...snapshot.entries.entries()].sort(([leftPath, left], [rightPath, right]) => {
+		if (left.kind === "directory" && right.kind !== "directory") return -1;
+		if (left.kind !== "directory" && right.kind === "directory") return 1;
+		return leftPath.localeCompare(rightPath);
+	});
+	for (const [relative, entry] of ordered) {
+		const absolute = path.join(snapshot.root, relative);
+		if (entry.kind === "directory") await mkdir(absolute, { recursive: true });
+		else if (entry.kind === "symlink") {
+			await mkdir(path.dirname(absolute), { recursive: true });
+			await symlink(entry.target, absolute);
+		} else await atomicWriteBytes(absolute, entry.bytes);
+	}
+	return [...changed].sort();
 }
 
 function stageForState(state: WorkflowState): string {
@@ -376,9 +592,8 @@ function isSubagentSession(ctx: ExtensionContext): boolean {
 	return sessionPrompt(ctx).includes("You are operating on a piece of work assigned to you by the main agent.");
 }
 
-function isReviewerSession(ctx: ExtensionContext): boolean {
-	const prompt = sessionPrompt(ctx);
-	return isSubagentSession(ctx) && prompt.includes("You are the IPH independent reviewer.");
+function reviewerIdentityForContext(ctx: ExtensionContext): ReviewerRuntimeIdentity | undefined {
+	return runtimeReviewerIdentity(ctx.sessionManager.getSessionFile(), ctx.sessionManager.getSessionId());
 }
 
 function inputPaths(input: Record<string, unknown>): string[] {
@@ -413,7 +628,10 @@ function isReviewTarget(relative: string): boolean {
 
 function reviewIsRegistered(state: WorkflowState | undefined): boolean {
 	const audit = state?.independent_audit;
-	return Boolean(audit && Object.keys(audit).length > 0 && text(audit.reviewer_agent_id));
+	return Boolean(
+		text(state?.review_artifact_sha256) ||
+		(audit && Object.keys(audit).length > 0 && text(audit.reviewer_agent_id)),
+	);
 }
 
 function bashMutatesNamedFile(command: string, fileName: string): boolean {
@@ -421,6 +639,145 @@ function bashMutatesNamedFile(command: string, fileName: string): boolean {
 	return /(?:>|>>|\bsed\s+-i\b|\b(?:mv|cp|rm|tee|perl)\b|\bpython\b[\s\S]*(?:write|dump|replace|unlink))/i.test(
 		command,
 	);
+}
+
+function blockedResult(root: string, message: string): IphRunResult {
+	return { status: "BLOCKED", exitCode: 2, stdout: "", stderr: message, root };
+}
+
+function auditAnswersAreSubstantive(audit: Record<string, unknown>): boolean {
+	const answers = audit.review_answers;
+	if (!answers || typeof answers !== "object" || Array.isArray(answers)) return false;
+	const required = ["data_authenticity", "baseline_execution", "claim_strength", "falsification_attempt"];
+	const artifactSignal = /(?:[\w./-]+\.(?:json|md|py|csv|log|txt)|sha-?256|artifact|evidence|manifest|工件|证据|清单|日志|稿件|测试)/i;
+	return required.every(key => {
+		const answer = text((answers as Record<string, unknown>)[key]).trim();
+		return answer.length >= 32 && artifactSignal.test(answer);
+	});
+}
+
+export async function sealRuntimeReview(
+	root: string,
+	verdict: "PASS" | "FAIL",
+	requestedAuditPath: string | undefined,
+	strict: boolean,
+	identity: ReviewerRuntimeIdentity,
+	signal?: AbortSignal,
+): Promise<IphRunResult> {
+	const statePath = path.join(root, WORKFLOW_FILE);
+	const originalState = await readFile(statePath).catch(() => undefined);
+	if (!originalState) return blockedResult(root, `${WORKFLOW_FILE} is missing or unreadable`);
+	const state = await readWorkflow(root);
+	if (!state) return blockedResult(root, `${WORKFLOW_FILE} must be a JSON object`);
+	const active = text(state.active_state);
+	if (active !== "INDEPENDENT_REVIEW" && active !== "FINAL_VALIDITY_AUDIT") {
+		return blockedResult(root, `runtime review is only allowed in INDEPENDENT_REVIEW or FINAL_VALIDITY_AUDIT, found ${active || "(none)"}`);
+	}
+	const validity = text(state.validity_level);
+	if (active === "INDEPENDENT_REVIEW" && !["V2", "V3"].includes(validity)) {
+		return blockedResult(root, `INDEPENDENT_REVIEW requires an author-side V2 bundle, found ${validity || "(none)"}`);
+	}
+	if (active === "FINAL_VALIDITY_AUDIT" && !["V3", "V4"].includes(validity)) {
+		return blockedResult(root, `FINAL_VALIDITY_AUDIT requires an existing V3 and a new epoch bundle, found ${validity || "(none)"}`);
+	}
+
+	const currentAuditPath = text(state.artifacts?.independent_audit) || "independent_audit.json";
+	const auditRelative = requestedAuditPath?.trim() || currentAuditPath;
+	if (!canonicalRelativePath(auditRelative)) return blockedResult(root, `review artifact path is not canonical: ${auditRelative}`);
+	if (requestedAuditPath && !auditRelative.startsWith(`${REVIEW_DIR}/`)) {
+		return blockedResult(root, `a replacement review artifact must be created under ${REVIEW_DIR}/`);
+	}
+	if (reviewIsRegistered(state) && auditRelative === currentAuditPath) {
+		return blockedResult(root, "the registered review is immutable; create a new epoch-specific JSON artifact under review_artifacts/");
+	}
+	const auditPath = path.join(root, auditRelative);
+	const metadata = await lstat(auditPath).catch(() => undefined);
+	if (!metadata?.isFile() || metadata.isSymbolicLink()) {
+		return blockedResult(root, `review artifact must be a regular, non-symlink file: ${auditRelative}`);
+	}
+	const originalAudit = await readFile(auditPath);
+	const audit = await readJsonObject<Record<string, unknown>>(auditPath);
+	if (!audit) return blockedResult(root, "review artifact must be a readable JSON object smaller than 2 MB");
+	if (audit.schema_version !== "2.0") return blockedResult(root, "review artifact schema_version must be 2.0");
+	if (audit.verdict !== verdict) return blockedResult(root, `tool verdict ${verdict} does not match artifact verdict ${text(audit.verdict)}`);
+	if (audit.capability_available !== true && audit.capability_available !== false) {
+		return blockedResult(root, "review artifact must declare capability_available as a boolean");
+	}
+	if (verdict === "PASS" && audit.capability_available !== true) {
+		return blockedResult(root, "PASS is forbidden when reviewer capability is unavailable");
+	}
+	if (verdict === "PASS" && !auditAnswersAreSubstantive(audit)) {
+		return blockedResult(
+			root,
+			"PASS requires all four substantive review_answers (at least 32 characters each and tied to a named artifact, manifest, hash, log, or test)",
+		);
+	}
+	const authors = Array.isArray(audit.author_agent_ids)
+		? audit.author_agent_ids.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+		: [];
+	if (authors.length === 0) return blockedResult(root, "review artifact must identify at least one author_agent_id");
+	if (authors.includes(identity.reviewerAgentId)) {
+		return blockedResult(root, `reviewer ${identity.reviewerAgentId} is listed as an author and cannot independently review this bundle`);
+	}
+	const epoch = state.validation_epoch;
+	const bundle = text(state.claim_bundle_sha256);
+	if (!Number.isInteger(epoch) || Number(epoch) < 1 || !/^[0-9a-f]{64}$/i.test(bundle)) {
+		return blockedResult(root, "workflow state does not contain a valid validation_epoch and claim_bundle_sha256");
+	}
+
+	const sealedAudit: Record<string, unknown> = {
+		...audit,
+		validation_epoch: epoch,
+		reviewer_agent_id: identity.reviewerAgentId,
+		reviewer_thread_id: identity.reviewerThreadId,
+		audited_bundle_sha256: bundle,
+		audited_at: new Date().toISOString(),
+	};
+	state.artifacts = { ...(state.artifacts ?? {}), independent_audit: auditRelative };
+	state.independent_audit = sealedAudit;
+	if (verdict === "PASS" && audit.capability_available === true) {
+		state.validity_level = active === "INDEPENDENT_REVIEW" ? "V3" : "V4";
+	}
+	delete state.review_artifact_sha256;
+	state.updated_at = new Date().toISOString();
+
+	try {
+		await atomicWriteJson(auditPath, sealedAudit);
+		await atomicWriteJson(statePath, state);
+		const registered = await runIph(
+			root,
+			"review",
+			[
+				"--reviewer", identity.reviewerAgentId,
+				"--thread", identity.reviewerThreadId,
+				"--verdict", verdict,
+				...(strict ? ["--strict-new-checks"] : []),
+			],
+			signal,
+		);
+		if (registered.exitCode !== 0) {
+			await atomicWriteBytes(auditPath, originalAudit);
+			await atomicWriteBytes(statePath, originalState);
+			return registered;
+		}
+		const validated = await runIph(root, "validate", strict ? ["--strict-new-checks"] : [], signal);
+		validated.stdout = [
+			`runtime-bound review sealed: reviewer=${identity.reviewerAgentId} thread=${identity.reviewerThreadId} artifact=${auditRelative}`,
+			registered.stdout.trim(),
+			validated.stdout.trim(),
+		].filter(Boolean).join("\n");
+		return validated;
+	} catch (error) {
+		await atomicWriteBytes(auditPath, originalAudit).catch(() => undefined);
+		await atomicWriteBytes(statePath, originalState).catch(() => undefined);
+		return {
+			status: "ERROR",
+			exitCode: 70,
+			stdout: "",
+			stderr: error instanceof Error ? error.message : String(error),
+			root,
+		};
+	}
 }
 
 function renderStateContext(state: WorkflowState, lifecycleStage?: unknown): string {
@@ -457,6 +814,9 @@ function renderStateContext(state: WorkflowState, lifecycleStage?: unknown): str
 export default function iphExtension(pi: ExtensionAPI) {
 	const z = pi.zod;
 	const lastStopFingerprint = new Map<string, string>();
+	const pendingSnapshots = new Map<string, ProtectedSnapshot>();
+	const unsubscribeLifecycle = pi.events.on(SUBAGENT_LIFECYCLE_CHANNEL, recordSubagentLifecycle);
+	pi.on("session_shutdown", () => unsubscribeLifecycle());
 
 	const rootField = z.string().optional().describe("Research root; defaults to the session cwd");
 	const strictField = z.boolean().default(false).describe("Promote new checks to INVALID");
@@ -567,25 +927,33 @@ export default function iphExtension(pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "iph_review",
-		label: "IPH Register Review",
-		description: "Register an independently authored reviewer artifact and provenance in the authoritative state",
+		label: "IPH Seal Runtime Review",
+		description: "Reviewer-only: bind the current OMP task/session identity to a new audit and validate the resulting V3/V4 state",
 		approval: "write",
 		loadMode: "essential",
 		parameters: z.object({
-			reviewerAgentId: z.string().min(1),
-			threadId: z.string().min(1),
 			verdict: z.enum(["PASS", "FAIL"]),
-			strict: strictField,
+			auditPath: z.string().optional().describe("New reviewer-owned JSON under review_artifacts/; required when replacing an earlier registered audit"),
+			strict: z.boolean().default(true).describe("Run the authoritative validator with new checks promoted to INVALID"),
 			root: rootField,
 		}),
 		async execute(_id, params, signal, _update, ctx) {
-			const args = [
-				"--reviewer", params.reviewerAgentId,
-				"--thread", params.threadId,
-				"--verdict", params.verdict,
-				...(params.strict ? ["--strict-new-checks"] : []),
-			];
-			return toolResult(await runIph(resolveRoot(ctx.cwd, params.root), "review", args, signal));
+			const root = resolveRoot(ctx.cwd, params.root);
+			if (root !== path.resolve(ctx.cwd)) {
+				return toolResult(
+					blockedResult(root, "iph_review may only seal the reviewer task's own research root"),
+				);
+			}
+			const identity = reviewerIdentityForContext(ctx);
+			if (!identity) {
+				return toolResult(
+					blockedResult(
+						root,
+						"iph_review is reviewer-only: no active iph-reviewer task lifecycle record matches this exact session file and thread",
+					),
+				);
+			}
+			return toolResult(await sealRuntimeReview(root, params.verdict, params.auditPath, params.strict, identity, signal));
 		},
 	});
 
@@ -662,6 +1030,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 	pi.on("tool_call", async (event, ctx) => {
 		const state = await readWorkflow(ctx.cwd);
 		if (!state) return;
+		const reviewerIdentity = reviewerIdentityForContext(ctx);
 
 		if (event.toolName === "write" || event.toolName === "edit") {
 			for (const target of inputPaths(event.input)) {
@@ -671,9 +1040,15 @@ export default function iphExtension(pi: ExtensionAPI) {
 				}
 				if (isReviewTarget(relative)) {
 					if (reviewIsRegistered(state)) {
-						return { block: true, reason: "Registered review artifacts are immutable; dispatch a new iph-reviewer." };
+						const absolute = path.isAbsolute(target) ? path.normalize(target) : path.resolve(ctx.cwd, target);
+						if (!reviewerIdentity || existsSync(absolute) || !relative.startsWith(`${REVIEW_DIR}/`)) {
+							return {
+								block: true,
+								reason: "Registered review artifacts are immutable; an active iph-reviewer may only create a new file under review_artifacts/.",
+							};
+						}
 					}
-					if (!isReviewerSession(ctx)) {
+					if (!reviewerIdentity) {
 						return { block: true, reason: "Only the iph-reviewer subagent may author review artifacts." };
 					}
 				}
@@ -687,7 +1062,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 			}
 			if (
 				(bashMutatesNamedFile(command, "independent_audit.json") || bashMutatesNamedFile(command, REVIEW_DIR)) &&
-				(reviewIsRegistered(state) || !isReviewerSession(ctx))
+				(reviewIsRegistered(state) || !reviewerIdentity)
 			) {
 				return { block: true, reason: "Review artifacts must be reviewer-authored and are immutable after registration." };
 			}
@@ -702,6 +1077,60 @@ export default function iphExtension(pi: ExtensionAPI) {
 					reason: `${reason}. COMPUTE requires N0-4C, V3 and compute_authorized=true. Use iph_register_exploration only for reported exploration artifacts.`,
 				};
 			}
+		}
+
+		if (!IPH_TOOL_NAMES.has(event.toolName)) {
+			try {
+				const registered = reviewIsRegistered(state);
+				pendingSnapshots.set(
+					`${ctx.sessionManager.getSessionId()}\0${event.toolCallId}`,
+					await captureProtectedSnapshot(
+						ctx.cwd,
+						registered || !reviewerIdentity,
+						registered && Boolean(reviewerIdentity),
+						text(state.artifacts?.independent_audit),
+					),
+				);
+			} catch (error) {
+				return {
+					block: true,
+					reason: `Cannot establish protected-artifact snapshot; failing closed: ${error instanceof Error ? error.message : String(error)}`,
+				};
+			}
+		}
+	});
+
+	pi.on("tool_result", async (event, ctx) => {
+		const key = `${ctx.sessionManager.getSessionId()}\0${event.toolCallId}`;
+		const snapshot = pendingSnapshots.get(key);
+		if (!snapshot) return;
+		pendingSnapshots.delete(key);
+		try {
+			const restored = await restoreProtectedSnapshot(snapshot);
+			if (restored.length === 0) return;
+			return {
+				content: [
+					...event.content,
+					{
+						type: "text" as const,
+						text: `\nIPH SECURITY: unauthorized protected-artifact mutation was rolled back: ${restored.join(", ")}`,
+					},
+				],
+				details: { originalDetails: event.details, iphSecurity: { restored } },
+				isError: true,
+			};
+		} catch (error) {
+			return {
+				content: [
+					...event.content,
+					{
+						type: "text" as const,
+						text: `\nIPH SECURITY CRITICAL: protected artifacts changed and rollback failed: ${error instanceof Error ? error.message : String(error)}`,
+					},
+				],
+				details: { originalDetails: event.details, iphSecurity: { rollbackFailed: true } },
+				isError: true,
+			};
 		}
 	});
 

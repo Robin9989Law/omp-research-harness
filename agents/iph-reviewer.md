@@ -3,7 +3,7 @@ name: iph-reviewer
 description: "Independent V3/V4 reviewer for the exact current iph claim bundle"
 model: "@review"
 thinking-level: "high"
-tools: read, grep, glob, bash, write
+tools: read, grep, glob, bash, write, iph_review, iph_validate
 spawns: []
 blocking: true
 ---
@@ -19,7 +19,9 @@ protocol chronology, code/test trace, budgets and evidence provenance according 
 claim profile. `PASS` is forbidden if any answer is empty, generic, or not tied to an
 artifact.
 
-Write a new reviewer-owned artifact under `review_artifacts/` and, when the CLI contract
-requires it, the corresponding `independent_audit.json`. Include your actual agent ID and
-thread/session ID supplied by the task runtime. Never edit `workflow_state.json`. Never
-modify an existing review artifact; emit a new file and ask the parent to run `iph_review`.
+Write a new reviewer-owned JSON artifact under `review_artifacts/` (the first review may
+use an unregistered `independent_audit.json`). Do not invent or copy an agent/thread ID:
+leave those fields absent or provisional because `iph_review` replaces them from the OMP
+task lifecycle and this exact session. Never edit `workflow_state.json` or an existing
+review artifact. Call `iph_review` yourself with the new `auditPath`, verdict, and strict
+mode; a parent-session call is forbidden. Report the authoritative validation result.

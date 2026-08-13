@@ -53,7 +53,9 @@ claim bundle）、换轨（中途换路径/形式/贡献）。被驳回则执行
 - 原子观点提取（K_CLAIM_REGISTER）→ `atomic-claim-extractor`（@atomic → gpt-5.6-sol）
 - 文献碰撞综合（SYNTHESIZE_COLLISION）→ `collision-synthesizer`（@collision → gpt-5.6-sol）
 - 独立复核（INDEPENDENT_REVIEW / FINAL_VALIDITY_AUDIT）→ `iph-reviewer`（@review → deepseek-pro）
-复核产物主 agent 只读不写；需补字段只能重派 subagent，事后改动即 REVIEW_ARTIFACT_TAMPERED。
+复核产物主 agent 只读不写；`iph_review` 必须由 reviewer 在自己的 task session 内调用，
+agent/thread provenance 只接受 OMP lifecycle 运行时值。需补字段只能重派 subagent 并新建
+epoch 文件，事后改动即 REVIEW_ARTIFACT_TAMPERED。
 
 # Internal URLs
 Most FS/bash tools auto-resolve these to FS paths.

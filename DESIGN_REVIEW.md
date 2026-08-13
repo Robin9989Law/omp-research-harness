@@ -14,8 +14,9 @@
    init 子命令，而引导模式必须能创建合法 BOOT state。
 4. `session_stop` 的同一失败指纹只自动续跑一次；state 或验证结果改变后才再次续跑。
    这避免 omp 的 8 次 continuation 上限被同一错误空耗，同时保留唯一恢复动作。
-5. reviewer 由专用 `iph-reviewer` 子代理写产物，主代理不可写。`iph review` 登记后，
-   review 文件对所有会话变为不可变；身份与 bundle 一致性仍由权威 validator 裁决。
+5. reviewer 由专用 `iph-reviewer` 子代理写产物，主代理不可写。`iph_review` 只接受
+   与当前 session file 匹配的 OMP lifecycle 身份，运行时注入 agent/thread ID；登记后
+   review 文件不可修改，下一 epoch 只能追加新文件，最终仍由权威 validator 裁决。
 6. `lifecycle_state.json` 只保存 `active_stage` 与阶段指针。E2/E3 的真实子状态始终来自
    `workflow_state.json`；包装层不得形成第二套判定逻辑。
 
@@ -24,5 +25,6 @@
 - 插件包可被 `omp plugin link` 识别且 doctor 无 error。
 - BOOT state 可被远端同提交的 `iph validate --strict-new-checks` 判为 READY。
 - 8 个 CLI wrapper 保留 stdout、stderr 与四退出码语义。
-- 直接修改 state、主代理写 reviewer 产物、未授权高信号计算均被 hook 拦截。
+- 直接修改 state、主代理写 reviewer 产物、未授权高信号计算均被 hook 拦截；非
+  `iph_*` 工具另有执行后快照回滚，覆盖 eval/Node/自定义工具旁路。
 - 研究模式每轮注入唯一状态；引导模式只提示 bootstrap，不自行选路径。

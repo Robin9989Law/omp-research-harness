@@ -62,8 +62,9 @@
 | `agents/iph-reviewer.md` | `agents/iph-reviewer.md` | 独立复核 reviewer（@review → deepseek-pro，承载 V3/V4 硬门） |
 | `commands/*.md` | `commands/*.md` | `/iph`、`/iph-status`、`/iph-review` 斜杠命令 |
 
-关键约束：校验器唯一真相源是 iph 的 Python 脚本；TS 层只做参数 schema 与退出码
-转译，不重写校验逻辑。
+关键约束：校验器唯一真相源是 iph 的 Python 脚本；TS 层做参数 schema、退出码转译、
+运行时 reviewer provenance 绑定及原子镜像，不复制或替代任何有效性判定逻辑；封印后
+仍必须由 Python validator 给出最终 READY/INVALID/BLOCKED/MIGRATION_REQUIRED。
 
 ## 4.1 模型路由（Q8）
 

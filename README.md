@@ -75,7 +75,10 @@ validate；失败时只注入一项恢复动作。
 ## 安全边界
 
 - `write`/`edit`/shell 不得直接改 `workflow_state.json`。
-- 只有 `iph-reviewer` 子代理能新建 review 产物；`iph review` 登记后不可再改。
+- 只有由 OMP task lifecycle 证明的 `iph-reviewer` 会话能封印 review；agent/thread ID
+  由运行时注入，调用方不能提交。已登记产物不可再改，下一 epoch 只能新建文件。
+- 所有非 `iph_*` 工具执行前后都会对 state 与 review 工件做快照；即使经由 eval、
+  Node 脚本或自定义工具绕过命令正则，修改也会回滚并把工具结果标成错误。
 - 未获计算权时拦截研究脚本、明显数值/ML inline Python 和实验动词。validator 仍是
   未登记计算与探索数字泄漏的最终兜底。
 - `iph_*` 工具输出保留 Python CLI 的 stdout、stderr、退出码及
