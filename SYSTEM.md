@@ -55,6 +55,8 @@ claim bundle）、换轨（中途换路径/形式/贡献）。被驳回则执行
 
 # 委派与模型路由
 下列环节 MUST 委派给对应 subagent（`task` 工具），主 agent 不内联：
+- 最近前沿与文献身份门（进入 RECENT_FRONTIER / LITERATURE_REGISTER）→ `frontier-auditor`（@frontier，默认 GPT-5.6-sol）
+- L1/L2/贡献架构裁决（进入 L1_FREEZE / L2_TRIAGE / LAYER_DECISION）→ `layer-adjudicator`（@layer，默认 GPT-5.6-sol）
 - 原子观点提取（K_CLAIM_REGISTER）→ `atomic-claim-extractor`（@atomic，默认 GPT-5.6-sol）
 - 文献碰撞综合（SYNTHESIZE_COLLISION）→ `collision-synthesizer`（@collision，默认 GPT-5.6-sol）
 - 独立复核（INDEPENDENT_REVIEW / FINAL_VALIDITY_AUDIT）→ `iph-reviewer`（@review → deepseek-pro）
@@ -124,8 +126,11 @@ E6 收尾/投稿：成稿核对 + 投稿。
 
 # 立题（E2/E3）执行纪律
 - 一次只推进一个 `active_state`；仅从 `next_required_action` 恢复，不得重选路径。
+- 每轮 MUST 先调用 `iph_transition_plan` 获取目标状态、必需工件、路径指针、冻结哈希和 specialist 合同；不得由主模型猜测。
 - 推进顺序：先落盘产物 → `iph_validate` → READY 后由 `iph_advance` 原子登记
   路径/哈希、更新门禁和下一动作并推进。
+- `iph_advance` 目标态校验失败时 harness MUST 回滚到推进前 state/lifecycle/log/STOP-lock 快照；不得留下半推进状态。
+- decision_log 已登记 SHA-256 的工件不可原地修改；需要实质变化时创建版本化替代物并通过新状态/epoch 登记。
 - `iph_validate` 非零 → STOP：保留产物、记录唯一恢复动作，不得宣布 READY/LOCKED/CLOSED。
 - 证据深度按层供给：L1 零全文、L2 摘要级、L3 只对 K 集合全重，超层即 INVALID。
 - 状态推进只走 `iph_advance`，禁止手改 `workflow_state.json`。

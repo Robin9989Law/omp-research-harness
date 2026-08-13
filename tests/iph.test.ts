@@ -10,11 +10,14 @@ import {
 	EXIT_STATUS,
 	executableText,
 	findResearchRoot,
+	mutableArtifactConflicts,
 	recordSubagentLifecycle,
+	requiredSpecialistForTarget,
 	resolveSkillDir,
 	restoreProtectedSnapshot,
 	runtimeReviewerIdentity,
 	sealRuntimeReview,
+	transitionPlanForState,
 	validateLifecycleState,
 	verifySkillLock,
 } from "../extensions/iph";
@@ -27,6 +30,31 @@ describe("exit status translation", () => {
 			2: "BLOCKED",
 			3: "MIGRATION_REQUIRED",
 		});
+	});
+});
+
+describe("M3 control-plane routing", () => {
+	test("requires strong specialists only at scientific judgment gates", () => {
+		expect(requiredSpecialistForTarget("SCOPE_LOCK")).toBeUndefined();
+		expect(requiredSpecialistForTarget("RECENT_FRONTIER")).toBe("frontier-auditor");
+		expect(requiredSpecialistForTarget("L1_FREEZE")).toBe("layer-adjudicator");
+		expect(requiredSpecialistForTarget("SYNTHESIZE_COLLISION")).toBe("atomic-claim-extractor");
+		expect(requiredSpecialistForTarget("OUTPUT_CLAIM_BIND")).toBe("collision-synthesizer");
+	});
+
+	test("returns deterministic navigation through the full positive path", () => {
+		expect(transitionPlanForState({ active_state: "LAYER_DECISION" })?.target).toBe("K_FULLTEXT");
+		expect(transitionPlanForState({ active_state: "DIRECTION_LOCK" })?.target).toBe("COMPUTE");
+		expect(transitionPlanForState({ active_state: "FINAL_LOCK" })?.target).toBe("COMPLETE");
+		expect(transitionPlanForState({ active_state: "N0_AUDIT", novelty_level: "N0-2" })).toBeUndefined();
+		expect(transitionPlanForState({ active_state: "N0_AUDIT", novelty_level: "N0-4C" })?.target).toBe("CLAIM_FREEZE");
+	});
+
+	test("rejects freezing mutable pointer artifacts", () => {
+		expect(mutableArtifactConflicts(
+			["near_neighbor_registry.json", "scope_lock.md"],
+			["literature_registry=near_neighbor_registry.json", "scope_lock=scope_lock.md"],
+		)).toEqual(["literature_registry=near_neighbor_registry.json"]);
 	});
 });
 
@@ -226,7 +254,7 @@ describe("protected artifact rollback", () => {
 			expect(await readFile(path.join(root, "lifecycle_state.json"), "utf8")).toBe("lifecycle-original\n");
 			expect(await readFile(path.join(root, "independent_audit.json"), "utf8")).toBe("audit-original\n");
 			expect(await readFile(path.join(root, "review_artifacts", "review-1.json"), "utf8")).toBe("review-original\n");
-		await expect(readFile(path.join(root, "review_artifacts", "review-2.json"), "utf8")).rejects.toThrow();
+			await expect(readFile(path.join(root, "review_artifacts", "review-2.json"), "utf8")).rejects.toThrow();
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
@@ -257,6 +285,23 @@ describe("protected artifact rollback", () => {
 			await writeFile(path.join(root, "audits", "current.json"), "configured-tamper\n");
 			expect(await restoreProtectedSnapshot(snapshot)).toContain("audits/current.json");
 			expect(await readFile(path.join(root, "audits", "current.json"), "utf8")).toBe("configured-original\n");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("restores a decision-log artifact changed by an arbitrary tool", async () => {
+		const root = await mkdtemp(path.join(tmpdir(), "iph-frozen-decision-artifact-"));
+		try {
+			await writeFile(path.join(root, "scope_lock.md"), "scope-original\n");
+			await writeFile(path.join(root, "lifecycle_state.json"), "lifecycle-original\n");
+			await writeFile(path.join(root, "workflow_state.json"), `${JSON.stringify({
+				decision_log: [{ artifacts: [{ path: "scope_lock.md", sha256: "0".repeat(64) }] }],
+			})}\n`);
+			const snapshot = await captureProtectedSnapshot(root, false);
+			await writeFile(path.join(root, "scope_lock.md"), "scope-tampered\n");
+			expect(await restoreProtectedSnapshot(snapshot)).toContain("scope_lock.md");
+			expect(await readFile(path.join(root, "scope_lock.md"), "utf8")).toBe("scope-original\n");
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

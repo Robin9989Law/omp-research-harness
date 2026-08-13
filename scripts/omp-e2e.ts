@@ -40,6 +40,7 @@ try {
 		"iph_repair_collision_round",
 		"iph_review",
 		"iph_start_collision_round",
+		"iph_transition_plan",
 		"iph_validate",
 	];
 	assert(
@@ -66,6 +67,12 @@ try {
 	const originalState = await readFile(statePath, "utf8");
 	const lifecycle = JSON.parse(await readFile(lifecyclePath, "utf8"));
 	assert(validateLifecycleState(lifecycle, "E2").length === 0, "bootstrap wrote a noncanonical lifecycle state");
+	const transitionPlan = await execute("iph_transition_plan", {}, main);
+	assert(!transitionPlan.isError, `BOOT transition plan failed: ${JSON.stringify(transitionPlan)}`);
+	assert(
+		transitionPlan.content.some(item => item.type === "text" && item.text.includes('"target": "SCOPE_LOCK"')),
+		"BOOT transition plan omitted the deterministic target",
+	);
 
 	const nested = path.join(root, "analysis", "figures");
 	await mkdir(nested, { recursive: true });
@@ -120,6 +127,47 @@ try {
 
 	await writeFile(path.join(root, "scope_lock.md"), "# Scope lock\n");
 	await writeFile(path.join(root, "hierarchy_status.md"), "# Hierarchy status\n");
+	await writeFile(path.join(root, "near_neighbor_registry.json"), "{}\n");
+	const mutableFreeze = await execute(
+		"iph_advance",
+		{
+			to: "SCOPE_LOCK",
+			note: "attempt to freeze a mutable registry",
+			gates: [],
+			artifacts: ["near_neighbor_registry.json"],
+			stateArtifacts: ["literature_registry=near_neighbor_registry.json"],
+			nextAction: "Do not commit this transition.",
+			strict: true,
+		},
+		main,
+	);
+	assert(mutableFreeze.isError, "mutable pointer artifact was accepted as an immutable decision hash");
+	assert(
+		mutableFreeze.content.some(item => item.type === "text" && item.text.includes("must not be frozen")),
+		"mutable artifact rejection omitted the recovery diagnosis",
+	);
+	assert(await readFile(statePath, "utf8") === originalState, "mutable artifact rejection changed workflow state");
+	await rm(path.join(root, "near_neighbor_registry.json"));
+	const rejectedAdvance = await execute(
+		"iph_advance",
+		{
+			to: "SCOPE_LOCK",
+			note: "intentionally omit state pointers",
+			gates: ["scope_locked=true"],
+			artifacts: ["scope_lock.md", "hierarchy_status.md"],
+			stateArtifacts: [],
+			nextAction: "Drain prior-round claims before frontier search.",
+			strict: true,
+		},
+		main,
+	);
+	assert(rejectedAdvance.isError, "invalid target state unexpectedly committed");
+	assert(
+		rejectedAdvance.content.some(item => item.type === "text" && item.text.includes("transition_rolled_back=true")),
+		"failed target validation did not report transactional rollback",
+	);
+	assert(await readFile(statePath, "utf8") === originalState, "failed target validation left workflow_state.json advanced");
+	assert(!Bun.file(path.join(root, ".workflow_stop.lock")).size, "failed target validation left a STOP lock after rollback");
 	const advance = await execute(
 		"iph_advance",
 		{
@@ -144,6 +192,29 @@ try {
 		advancedState.next_required_action === "Drain prior-round claims before frontier search.",
 		"advance left a stale next_required_action",
 	);
+
+	const frozenScopeCall = {
+		type: "tool_call",
+		toolCallId: "frozen-scope-bypass",
+		toolName: "custom_node_tool",
+		input: {},
+	} satisfies ToolCallEvent;
+	await toolCallHandlers[0]!(frozenScopeCall, main);
+	await writeFile(path.join(root, "scope_lock.md"), "# tampered scope\n");
+	const frozenScopeRollback = (await toolResultHandlers[0]!(
+		{
+			type: "tool_result",
+			toolCallId: frozenScopeCall.toolCallId,
+			toolName: frozenScopeCall.toolName,
+			input: {},
+			content: [{ type: "text", text: "custom tool completed" }],
+			details: {},
+			isError: false,
+		} satisfies ToolResultEvent,
+		main,
+	)) as { isError?: boolean };
+	assert(frozenScopeRollback.isError === true, "decision-log artifact tamper was not rolled back");
+	assert(await readFile(path.join(root, "scope_lock.md"), "utf8") === "# Scope lock\n", "scope lock was not restored");
 
 	delete advancedState.artifacts.scope_lock;
 	delete advancedState.artifacts.hierarchy_status;
@@ -192,7 +263,7 @@ try {
 		"real lifecycle identity was not propagated into the reviewer tool path",
 	);
 
-	process.stdout.write("omp_e2e=READY loader=real tools=9 hooks=rollback recovery=artifact-map root=nested reviewer=lifecycle\n");
+	process.stdout.write("omp_e2e=READY loader=real tools=10 hooks=rollback transition=transactional frozen=decision-log mutable=guarded recovery=artifact-map root=nested reviewer=lifecycle\n");
 } finally {
 	await rm(root, { recursive: true, force: true });
 }

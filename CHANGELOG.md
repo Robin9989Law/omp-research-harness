@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- M3 remains the default coordinator, while new `frontier` and `layer` roles route the two
+  early scientific judgment gates to GPT-5.6-sol.
+- Added `iph_transition_plan`, specialist task provenance enforcement, immutable protection
+  for decision-log artifacts, and automatic rollback when target-state validation fails.
+- Transition planning now covers the complete positive path, preserves N0-1/N0-2 as terminal
+  outcomes, and rejects mutable state-pointer files passed as immutable decision-log hashes.
+
 ## 0.0.3 - 2026-08-13
 
 - 原子观点与文献碰撞默认模型恢复为 OMP `openai-codex/gpt-5.6-sol:high`；独立复核继续使用 DeepSeek V4 Pro。

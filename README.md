@@ -114,6 +114,8 @@ FINAL_LOCK = N0-4C AND V4 AND current independent audit
 | 角色 | 默认模型 | 用途 |
 |---|---|---|
 | `default` | `minimax-code-cn/MiniMax-M3:high` | 主流程 |
+| `frontier` | `openai-codex/gpt-5.6-sol:high` | 最近前沿、文献身份与覆盖裁决 |
+| `layer` | `openai-codex/gpt-5.6-sol:high` | L1、L2 与贡献架构裁决 |
 | `atomic` | `openai-codex/gpt-5.6-sol:high` | 原子观点提取 |
 | `collision` | `openai-codex/gpt-5.6-sol:high` | 文献碰撞与证伪综合 |
 | `review` | `deepseek/deepseek-v4-pro:high` | 独立 V3/V4 复核 |
@@ -149,21 +151,23 @@ FINAL_LOCK = N0-4C AND V4 AND current independent audit
 4. 运行 `omp plugin doctor @prcbooboo/omp-research-harness`。
 5. 先运行用户配置安装器的 `install --dry-run`。如果发现旧版安装清单，先检查配置漂移；
    无漂移时事务化卸载旧配置后再安装最新版，有漂移时停止并报告。
-6. 安装科研 SYSTEM，并按“角色—职责—模型”配置五个受管 modelRoles：
+6. 安装科研 SYSTEM，并按“角色—职责—模型”配置七个受管 modelRoles：
    - default：运行主研究流程 → minimax-code-cn/MiniMax-M3:high
+   - frontier：核验最近前沿、文献身份和覆盖轴 → openai-codex/gpt-5.6-sol:high
+   - layer：裁决 L1、L2 和贡献架构 → openai-codex/gpt-5.6-sol:high
    - atomic：atomic-claim-extractor，提取原子观点 → openai-codex/gpt-5.6-sol:high
    - collision：collision-synthesizer，执行文献碰撞与证伪综合 → openai-codex/gpt-5.6-sol:high
    - review：iph-reviewer，执行独立 V3/V4 复核 → deepseek/deepseek-v4-pro:high
    - commit：生成 Git commit message → minimax-code-cn/MiniMax-M3:high
    不要修改 task、vision、plan、designer 等非受管角色。
 7. 最后运行安装器 `status`、插件 doctor 和模型角色读取，报告插件版本、权威 IPH commit、
-   三个来源 URL、SYSTEM 是否匹配，以及五个受管角色的实际模型和全部 roleDrift。
+   三个来源 URL、SYSTEM 是否匹配，以及七个受管角色的实际模型和全部 roleDrift。
    任何来源、哈希、模型或健康检查不匹配，都不要继续创建研究工作流。
 
 安装完成后提醒我退出并重新启动 OMP，让新的插件工具和 SYSTEM 生效。
 ```
 
-重启 OMP 后再创建研究工作流。安装会改变用户级 `SYSTEM.md` 和五个受管模型角色，因此不要在
+重启 OMP 后再创建研究工作流。安装会改变用户级 `SYSTEM.md` 和七个受管模型角色，因此不要在
 正在执行研究动作的会话中边安装边继续推进。
 
 ### 2. 手动安装
@@ -198,13 +202,15 @@ omp plugin doctor @prcbooboo/omp-research-harness
 
 #### 2.3 安装科研人格和模型角色
 
-OMP 插件安装目录中的脚本会事务化配置用户级 `SYSTEM.md` 和五个受管模型角色：
+OMP 插件安装目录中的脚本会事务化配置用户级 `SYSTEM.md` 和七个受管模型角色：
 
 ```bash
 PLUGIN_DIR="$HOME/.omp/plugins/node_modules/@prcbooboo/omp-research-harness"
 
 "$PLUGIN_DIR/scripts/install-user-config.sh" install --dry-run
 "$PLUGIN_DIR/scripts/install-user-config.sh" install \
+  --role frontier=openai-codex/gpt-5.6-sol:high \
+  --role layer=openai-codex/gpt-5.6-sol:high \
   --role atomic=openai-codex/gpt-5.6-sol:high \
   --role collision=openai-codex/gpt-5.6-sol:high \
   --role commit=minimax-code-cn/MiniMax-M3:high
@@ -288,6 +294,11 @@ claim profile：【THEORY / ALGORITHM / MIXED】
 继续工作时，让 agent 严格执行唯一恢复动作：
 
 ```text
+/iph 先调用 iph_transition_plan，按返回的工件和 specialist 合同只完成当前状态；
+需要 frontier/layer/atomic/collision specialist 时必须委派，strict READY 后才推进。
+```
+
+```text
 /iph 执行当前 next_required_action
 ```
 
@@ -305,7 +316,7 @@ claim profile：【THEORY / ALGORITHM / MIXED】
 | `/iph-status` | strict validate，并生成机器状态与交接报告 |
 | `/iph-review` | 派发独立 reviewer，绑定真实 task/session provenance |
 
-插件还向 OMP 注册 9 个底层工具：bootstrap、validate、advance、碰撞轮次创建/修复、review
+插件还向 OMP 注册 10 个底层工具：transition plan、bootstrap、validate、advance、碰撞轮次创建/修复、review
 封印、STOP 解锁、探索登记和 handover。正常使用时不需要记住这些工具名，斜杠命令和注入的
 机器状态会引导 agent 选择正确工具。
 
@@ -343,9 +354,13 @@ MIGRATION_REQUIRED = 3
 ```yaml
 # my-model-roles.yml
 modelRoles:
+  default: minimax-code-cn/MiniMax-M3:high
+  frontier: openai-codex/gpt-5.6-sol:high
+  layer: openai-codex/gpt-5.6-sol:high
   atomic: openai-codex/gpt-5.6-sol:max
   collision: openai-codex/gpt-5.6-sol:max
   review: deepseek/deepseek-v4-pro:max
+  commit: minimax-code-cn/MiniMax-M3:high
 ```
 
 已安装后可以直接更新，不需要卸载：
@@ -360,7 +375,7 @@ modelRoles:
 "$PLUGIN_DIR/scripts/install-user-config.sh" status
 ```
 
-允许管理的角色是 `default`、`atomic`、`collision`、`review`、`commit`。其他已有 OMP 角色会
+允许管理的角色是 `default`、`frontier`、`layer`、`atomic`、`collision`、`review`、`commit`。其他已有 OMP 角色会
 原样保留。
 
 ## 卸载

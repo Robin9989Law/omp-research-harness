@@ -52,7 +52,7 @@ try {
 		new EventBus(),
 	);
 	assert(loaded.errors.length === 0, `packed extension failed real OMP loading: ${JSON.stringify(loaded.errors)}`);
-	assert(loaded.extensions.length === 1 && loaded.extensions[0]!.tools.size === 9, "packed extension registered the wrong tool set");
+	assert(loaded.extensions.length === 1 && loaded.extensions[0]!.tools.size === 10, "packed extension registered the wrong tool set");
 
 	const isolatedAgent = path.join(root, "agent");
 	const installDryRun = await run([path.join(packageRoot, "scripts", "install-user-config.sh"), "install", "--dry-run"], {

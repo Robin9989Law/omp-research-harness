@@ -1,5 +1,7 @@
 modelRoles:
   default: minimax-code-cn/MiniMax-M3:high
+  frontier: openai-codex/gpt-5.6-sol:high
+  layer: openai-codex/gpt-5.6-sol:high
   atomic: openai-codex/gpt-5.6-sol:high
   collision: openai-codex/gpt-5.6-sol:high
   review: deepseek/deepseek-v4-pro:high

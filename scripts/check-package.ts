@@ -16,6 +16,8 @@ const required = [
 	"tsconfig.json",
 	"agents/atomic-claim-extractor.md",
 	"agents/collision-synthesizer.md",
+	"agents/frontier-auditor.md",
+	"agents/layer-adjudicator.md",
 	"agents/iph-reviewer.md",
 	"commands/iph.md",
 	"commands/iph-status.md",

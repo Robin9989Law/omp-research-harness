@@ -58,6 +58,8 @@
 |---|---|---|
 | `SYSTEM.md` | `SYSTEM.md` | 科研人格 + 「iph 状态机是默认工作流」指令（替换默认编码人格） |
 | `extensions/iph.ts` | `extensions/iph.ts` | iph CLI 工具化 + 门禁 hook（自动 validate / 状态注入 / 计算拦截） |
+| `agents/frontier-auditor.md` | `agents/frontier-auditor.md` | 前沿身份、检索路径与覆盖审计（@frontier → GPT-5.6-sol） |
+| `agents/layer-adjudicator.md` | `agents/layer-adjudicator.md` | L1/L2 与贡献架构裁决（@layer → GPT-5.6-sol） |
 | `agents/atomic-claim-extractor.md` | `agents/atomic-claim-extractor.md` | 原子观点提取 subagent（@atomic → GPT-5.6-sol） |
 | `agents/collision-synthesizer.md` | `agents/collision-synthesizer.md` | 文献碰撞综合 subagent（@collision → GPT-5.6-sol） |
 | `agents/iph-reviewer.md` | `agents/iph-reviewer.md` | 独立复核 reviewer（@review → deepseek-pro，承载 V3/V4 硬门） |
@@ -74,6 +76,8 @@
 | 角色 | 模型 | 承接 iph 环节 |
 |---|---|---|
 | default | minimax-code-cn/MiniMax-M3:high | 其他工作流（主 agent） |
+| frontier | openai-codex/gpt-5.6-sol:high | RECENT_FRONTIER / LITERATURE_REGISTER 前沿身份与覆盖 |
+| layer | openai-codex/gpt-5.6-sol:high | L1_FREEZE / L2_TRIAGE / LAYER_DECISION 层级裁决 |
 | atomic | openai-codex/gpt-5.6-sol:high | K_CLAIM_REGISTER 原子观点 |
 | collision | openai-codex/gpt-5.6-sol:high | SYNTHESIZE_COLLISION 碰撞 |
 | review | deepseek/deepseek-v4-pro:high | INDEPENDENT_REVIEW / FINAL_VALIDITY_AUDIT |

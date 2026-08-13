@@ -6,7 +6,7 @@ import * as path from "node:path";
 
 const MANIFEST_NAME = "research-harness-install.json";
 const DEFAULT_ROLES_FILE = path.resolve(import.meta.dir, "..", "config", "model-roles.yml");
-const MANAGED_ROLE_NAMES = new Set(["default", "atomic", "collision", "review", "commit"]);
+const MANAGED_ROLE_NAMES = new Set(["default", "frontier", "layer", "atomic", "collision", "review", "commit"]);
 
 interface InstallManifest {
 	schema_version: "1.0";
