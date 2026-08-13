@@ -26,7 +26,7 @@
 | Q8 | 模型路由 | 按任务分模型：原子观点/碰撞→gpt-5.6-sol；其他→M3；复核→deepseek-pro；快速→deepseek-flash |
 | Q9 | 部署 | 直接当前 omp（不 fork）；打包为 omp 插件（`omp plugin install`）+ 用户级配置（SYSTEM.md / modelRoles）；开发用 `omp plugin link` 本地联调 |
 | Q10 | 生命周期状态 | 薄包装：`lifecycle_state.json` 只存 `active_stage` + 阶段指针，E2/E3 用 iph `workflow_state.json` 作子状态，不动 schema 3.0 |
-| Q11 | 可移植性 | machinery（extension/agents/commands/skills）进插件；SYSTEM.md/modelRoles 走用户配置 + README；iph.py 路径经 `IPH_SKILL_DIR` 抽象，不硬编码 |
+| Q11 | 可移植性 | machinery（extension/agents/commands/skills）进插件；SYSTEM.md/modelRoles 走用户配置 + README；iph.py 路径经 `IPH_SKILL_DIR` 抽象，不硬编码，并用随包 lock manifest 固定上游 commit/内容 |
 
 ## 2.1 V0.0.1 范围
 
@@ -40,6 +40,7 @@
 
 ### 3.1 研究模式（目录内存在 `workflow_state.json`）
 
+- 当前目录或最近祖先目录存在 state 即进入研究模式，所有 hook 共用该研究根。
 - iph 状态机驱动一切：仅从 `next_required_action` 恢复，推进前必 validate，
   计算门硬拦。
 - 会话结束（yield）前 hook 自动 `iph validate`，非零即注入唯一恢复动作续跑，

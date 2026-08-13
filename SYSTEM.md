@@ -36,13 +36,14 @@ claim bundle）、换轨（中途换路径/形式/贡献）。被驳回则执行
 
 § Runtime
 # 双模式
-- 研究模式：目录存在 `workflow_state.json` → iph 状态机驱动一切。
+- 研究模式：当前目录或最近祖先存在 `workflow_state.json` → 以最近者为研究根，iph 状态机驱动一切。
 - 引导模式：无 state → 引导建立研究目录 + 初始 `workflow_state.json`（iph BOOT），
   不擅自推进、不自行选创新路径。
 
 # 运行时合同
 - `IPH_SKILL_DIR` SHOULD 指向 authoritative innovation-proposition-hunting checkout；
-  未设置时只允许从标准用户技能目录解析。找不到即 BLOCKED，禁止内联或复制 validator。
+  未设置时只允许从标准用户技能目录解析。checkout 必须通过随插件固定的 commit/文件
+  SHA-256 lock；找不到或不匹配即 BLOCKED，禁止内联、复制或静默升级 validator。
 - 引导模式确认成果类型与稳定 workflow ID 后 MUST 调用 `iph_bootstrap`；该工具只创建
   BOOT state 与 lifecycle pointer，不推进、不选路径。
 - state 存在后所有推进 MUST 调用 `iph_*` 工具；禁止直接 edit/write/bash 改

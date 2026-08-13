@@ -27,8 +27,10 @@ export IPH_SKILL_DIR=/absolute/path/to/innovation-proposition-hunting
 
 未设置时依次检查 `~/.agents/skills/innovation-proposition-hunting`、
 `~/.codex/skills/innovation-proposition-hunting`、
-`~/.claude/skills/innovation-proposition-hunting`。缺失时工具返回 BLOCKED，不使用内置
-副本或降级 validator。
+`~/.claude/skills/innovation-proposition-hunting`。当前 harness 锁定上游提交
+`13fc4ec865be42beba2dac9e035ca478ab2e9435`，并在每次调用前核对核心说明和全部 Python
+脚本的 SHA-256；HEAD 或内容不一致即 BLOCKED。缺失时同样 BLOCKED，不使用内置副本或
+降级 validator。升级上游必须显式更新并评审 `config/iph-lock.json`。
 
 ## 开发联调
 
@@ -68,7 +70,9 @@ modelRoles:
 引导模式：当前目录没有 `workflow_state.json`。确认成果类型与稳定 workflow ID 后调用
 `iph_bootstrap`；它只创建合法 BOOT state 与 lifecycle pointer，不选创新路径、不推进。
 
-研究模式：每轮把机器 state 注入 system prompt；只执行当前 `active_state` 的
+研究模式：从当前目录向上选择最近的 `workflow_state.json` 作为研究根，所以在
+`analysis/`、`src/` 等子目录工作仍共享唯一状态。每轮把机器 state 注入 system
+prompt；只执行当前 `active_state` 的
 `next_required_action`。状态推进只能调用 `iph_advance`。session 停止前自动 strict
 validate；失败时只注入一项恢复动作。
 
@@ -79,6 +83,9 @@ validate；失败时只注入一项恢复动作。
   由运行时注入，调用方不能提交。已登记产物不可再改，下一 epoch 只能新建文件。
 - 所有非 `iph_*` 工具执行前后都会对 state 与 review 工件做快照；即使经由 eval、
   Node 脚本或自定义工具绕过命令正则，修改也会回滚并把工具结果标成错误。
+- `lifecycle_state.json` 必须满足 schema、规范指针和由 iph state 推导的活动阶段；漂移
+  时只允许检查或运行 `iph_validate`；该工具先重建派生薄指针，再由 Python 独立裁决
+  研究 state，避免 lifecycle 与 workflow 同时异常时形成恢复死锁。
 - 未获计算权时拦截研究脚本、明显数值/ML inline Python 和实验动词。validator 仍是
   未登记计算与探索数字泄漏的最终兜底。
 - `iph_*` 工具输出保留 Python CLI 的 stdout、stderr、退出码及

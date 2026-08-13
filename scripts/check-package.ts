@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
-import { createBootState, resolveSkillDir } from "../extensions/iph";
+import { createBootState, resolveSkillDir, verifySkillLock } from "../extensions/iph";
 
 const projectRoot = path.resolve(import.meta.dir, "..");
 const required = [
@@ -15,6 +15,7 @@ const required = [
 	"commands/iph-review.md",
 	"schemas/lifecycle_state.schema.json",
 	"config/model-roles.yml",
+	"config/iph-lock.json",
 ];
 
 for (const relative of required) {
@@ -29,6 +30,8 @@ if (pkg.version !== "0.0.1" || !pkg.omp?.extensions?.includes("extensions/iph.ts
 
 const skillDir = resolveSkillDir();
 if (!skillDir) throw new Error("authoritative iph checkout not found; set IPH_SKILL_DIR");
+const skillLock = await verifySkillLock(skillDir);
+if (!skillLock.ok) throw new Error(`authoritative iph checkout lock failed: ${skillLock.reason}`);
 
 const tempRoot = await mkdtemp(path.join(tmpdir(), "omp-research-harness-check-"));
 try {

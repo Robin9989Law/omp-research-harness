@@ -9,7 +9,8 @@
 1. `SYSTEM.md` 保留 omp 的文件、工具、委派和内部 URL 基建；科研人格与 iph 纪律
    覆盖默认编码人格。删除基建会使状态机无法可靠调用工具。
 2. `IPH_SKILL_DIR` 是显式运行时合同。未设置时只检查用户目录下的标准技能位置，
-   不写死开发机绝对路径；找不到时返回 `BLOCKED`，不猜测或复制 validator。
+   不写死开发机绝对路径；找不到时返回 `BLOCKED`。运行时还对固定上游 commit 的核心
+   文档与全部 Python 脚本逐文件验 SHA-256，不猜测、复制或静默升级 validator。
 3. iph 原有 8 个子命令逐一注册为工具。另加 `iph_bootstrap`，因为权威 CLI 没有
    init 子命令，而引导模式必须能创建合法 BOOT state。
 4. `session_stop` 的同一失败指纹只自动续跑一次；state 或验证结果改变后才再次续跑。
@@ -18,7 +19,11 @@
    与当前 session file 匹配的 OMP lifecycle 身份，运行时注入 agent/thread ID；登记后
    review 文件不可修改，下一 epoch 只能追加新文件，最终仍由权威 validator 裁决。
 6. `lifecycle_state.json` 只保存 `active_stage` 与阶段指针。E2/E3 的真实子状态始终来自
-   `workflow_state.json`；包装层不得形成第二套判定逻辑。
+   `workflow_state.json`；包装层不得形成第二套判定逻辑。schema、规范指针或派生阶段
+   漂移时 STOP；`iph_validate` 先重建完全派生的薄状态，再由 Python 独立裁决权威 state，
+   防止两个文件同时异常时出现恢复死锁。
+7. session 位于研究子目录时向上选择最近的 `workflow_state.json`；工具、hook、快照、
+   lifecycle 和 session-stop 均使用同一研究根，避免 cwd 漂移形成第二份状态。
 
 ## 验收条件
 

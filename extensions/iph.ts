@@ -55,6 +55,13 @@ interface SubagentLifecycleRecord {
 	sessionFile: string;
 }
 
+interface SkillLockResult {
+	ok: boolean;
+	commit?: string;
+	repository?: string;
+	reason?: string;
+}
+
 type ProtectedEntry =
 	| { kind: "file"; bytes: Uint8Array }
 	| { kind: "directory" }
@@ -74,6 +81,8 @@ const REVIEW_DIR = "review_artifacts";
 const REVIEWER_AGENT = "iph-reviewer";
 const SUBAGENT_LIFECYCLE_CHANNEL = "task:subagent:lifecycle";
 const RUNTIME_REGISTRY_KEY = Symbol.for("omp-research-harness.reviewer-runtime-registry.v1");
+const HARNESS_ROOT = path.resolve(import.meta.dir, "..");
+const IPH_LOCK_FILE = path.join(HARNESS_ROOT, "config", "iph-lock.json");
 const CLI_SUBCOMMANDS = new Set([
 	"validate",
 	"advance",
@@ -123,6 +132,16 @@ const VALIDITY_STATES = new Set([
 	"FINAL_LOCK",
 	"COMPLETE",
 ]);
+const LIFECYCLE_STAGES = ["E0", "E1", "E2", "E3", "E4", "E5", "E6"] as const;
+const CANONICAL_STAGE_POINTERS: Record<(typeof LIFECYCLE_STAGES)[number], string | null> = {
+	E0: `${WORKFLOW_FILE}#output_type`,
+	E1: null,
+	E2: WORKFLOW_FILE,
+	E3: WORKFLOW_FILE,
+	E4: `${WORKFLOW_FILE}#compute_stage`,
+	E5: null,
+	E6: null,
+};
 
 function text(value: unknown): string {
 	return typeof value === "string" ? value : "";
@@ -182,6 +201,21 @@ function resolveRoot(cwd: string, requested?: string): string {
 	return path.resolve(cwd, requested?.trim() || ".");
 }
 
+export function findResearchRoot(start: string): string | undefined {
+	let current = path.resolve(start);
+	while (true) {
+		if (existsSync(path.join(current, WORKFLOW_FILE))) return current;
+		const parent = path.dirname(current);
+		if (parent === current) return undefined;
+		current = parent;
+	}
+}
+
+function resolveResearchRoot(cwd: string, requested?: string): string {
+	if (requested?.trim()) return path.resolve(cwd, requested.trim());
+	return findResearchRoot(cwd) ?? path.resolve(cwd);
+}
+
 function isIphSkillDir(candidate: string): boolean {
 	return existsSync(path.join(candidate, "SKILL.md")) && existsSync(path.join(candidate, "scripts", "iph.py"));
 }
@@ -199,6 +233,56 @@ export function resolveSkillDir(
 		path.join(home, ".claude", "skills", "innovation-proposition-hunting"),
 	];
 	return candidates.find(isIphSkillDir);
+}
+
+export async function verifySkillLock(skillDir: string): Promise<SkillLockResult> {
+	const lock = await readJsonObject<Record<string, unknown>>(IPH_LOCK_FILE);
+	if (!lock || lock.schema_version !== "1.0" || typeof lock.files !== "object" || !lock.files) {
+		return { ok: false, reason: `invalid or missing harness lock file: ${IPH_LOCK_FILE}` };
+	}
+	const commit = text(lock.commit);
+	const repository = text(lock.repository);
+	if (!/^[0-9a-f]{40}$/.test(commit) || !repository) {
+		return { ok: false, reason: "iph-lock.json must contain a repository and 40-character commit" };
+	}
+	const files = lock.files as Record<string, unknown>;
+	const relatives = Object.keys(files).sort();
+	if (relatives.length === 0) return { ok: false, commit, repository, reason: "iph-lock.json has no files" };
+	const realSkillRoot = await realpath(skillDir).catch(() => undefined);
+	if (!realSkillRoot) return { ok: false, commit, repository, reason: `skill directory is unreadable: ${skillDir}` };
+	for (const relative of relatives) {
+		const expectedHash = text(files[relative]);
+		if (!canonicalRelativePath(relative) || !/^[0-9a-f]{64}$/.test(expectedHash)) {
+			return { ok: false, commit, repository, reason: `invalid lock entry: ${relative}` };
+		}
+		const absolute = path.join(skillDir, relative);
+		const [metadata, resolved] = await Promise.all([
+			lstat(absolute).catch(() => undefined),
+			realpath(absolute).catch(() => undefined),
+		]);
+		const expectedResolved = path.join(realSkillRoot, ...relative.split("/"));
+		if (!metadata?.isFile() || metadata.isSymbolicLink() || resolved !== expectedResolved) {
+			return { ok: false, commit, repository, reason: `locked file is missing, non-regular, or crosses a symlink: ${relative}` };
+		}
+		const actualHash = createHash("sha256").update(await readFile(absolute)).digest("hex");
+		if (actualHash !== expectedHash) {
+			return {
+				ok: false,
+				commit,
+				repository,
+				reason: `locked file hash mismatch: ${relative} expected=${expectedHash} actual=${actualHash}`,
+			};
+		}
+	}
+	if (existsSync(path.join(skillDir, ".git"))) {
+		const child = Bun.spawn(["git", "-C", skillDir, "rev-parse", "HEAD"], { stdout: "pipe", stderr: "pipe" });
+		const [stdout, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+		const actualCommit = stdout.trim();
+		if (exitCode !== 0 || actualCommit !== commit) {
+			return { ok: false, commit, repository, reason: `skill git HEAD mismatch: expected=${commit} actual=${actualCommit || "unavailable"}` };
+		}
+	}
+	return { ok: true, commit, repository };
 }
 
 async function readJsonObject<T extends object>(filePath: string): Promise<T | undefined> {
@@ -278,6 +362,7 @@ export async function captureProtectedSnapshot(
 ): Promise<ProtectedSnapshot> {
 	const entries = new Map<string, ProtectedEntry>();
 	await captureEntry(root, WORKFLOW_FILE, entries);
+	await captureEntry(root, LIFECYCLE_FILE, entries);
 	const reviewFiles = ["independent_audit.json"];
 	if (
 		configuredAuditPath &&
@@ -327,6 +412,7 @@ export async function restoreProtectedSnapshot(snapshot: ProtectedSnapshot): Pro
 	if (changed.size === 0) return [];
 
 	await rm(path.join(snapshot.root, WORKFLOW_FILE), { recursive: true, force: true });
+	await rm(path.join(snapshot.root, LIFECYCLE_FILE), { recursive: true, force: true });
 	if (snapshot.includeReview) {
 		for (const relative of snapshot.reviewFiles) {
 			await rm(path.join(snapshot.root, relative), { recursive: true, force: true });
@@ -362,25 +448,69 @@ function lifecycleState(activeStage: string) {
 	return {
 		schema_version: "1.0",
 		active_stage: activeStage,
-		stage_pointers: {
-			E0: `${WORKFLOW_FILE}#output_type`,
-			E1: null,
-			E2: WORKFLOW_FILE,
-			E3: WORKFLOW_FILE,
-			E4: `${WORKFLOW_FILE}#compute_stage`,
-			E5: null,
-			E6: null,
-		},
+		stage_pointers: { ...CANONICAL_STAGE_POINTERS },
 	};
+}
+
+export function validateLifecycleState(
+	value: Record<string, unknown> | undefined,
+	expectedStage?: string,
+): string[] {
+	if (!value) return [`${LIFECYCLE_FILE} is missing, unreadable, or not a JSON object`];
+	const issues: string[] = [];
+	const topKeys = Object.keys(value).sort();
+	const expectedTopKeys = ["active_stage", "schema_version", "stage_pointers"];
+	if (JSON.stringify(topKeys) !== JSON.stringify(expectedTopKeys)) issues.push("top-level keys do not match the lifecycle schema");
+	if (value.schema_version !== "1.0") issues.push("schema_version must equal 1.0");
+	if (!LIFECYCLE_STAGES.includes(value.active_stage as (typeof LIFECYCLE_STAGES)[number])) {
+		issues.push("active_stage must be one of E0..E6");
+	}
+	if (expectedStage && value.active_stage !== expectedStage) {
+		issues.push(`active_stage drift: expected ${expectedStage}, found ${text(value.active_stage) || "(none)"}`);
+	}
+	const pointers = value.stage_pointers;
+	if (!pointers || typeof pointers !== "object" || Array.isArray(pointers)) {
+		issues.push("stage_pointers must be an object");
+		return issues;
+	}
+	const pointerObject = pointers as Record<string, unknown>;
+	if (JSON.stringify(Object.keys(pointerObject).sort()) !== JSON.stringify([...LIFECYCLE_STAGES].sort())) {
+		issues.push("stage_pointers must contain exactly E0..E6");
+	}
+	for (const stage of LIFECYCLE_STAGES) {
+		if (pointerObject[stage] !== CANONICAL_STAGE_POINTERS[stage]) {
+			issues.push(`stage_pointers.${stage} must equal ${JSON.stringify(CANONICAL_STAGE_POINTERS[stage])}`);
+		}
+	}
+	return issues;
+}
+
+async function inspectLifecycleState(
+	root: string,
+	expectedStage?: string,
+): Promise<{ value?: Record<string, unknown>; issues: string[] }> {
+	const lifecyclePath = path.join(root, LIFECYCLE_FILE);
+	const metadata = await lstat(lifecyclePath).catch(() => undefined);
+	if (!metadata) return { issues: [`${LIFECYCLE_FILE} is missing`] };
+	if (!metadata.isFile() || metadata.isSymbolicLink()) {
+		return { issues: [`${LIFECYCLE_FILE} must be a regular, non-symlink file`] };
+	}
+	const value = await readJsonObject<Record<string, unknown>>(lifecyclePath);
+	return { value, issues: validateLifecycleState(value, expectedStage) };
 }
 
 async function syncLifecycle(root: string): Promise<void> {
 	const lifecyclePath = path.join(root, LIFECYCLE_FILE);
-	if (!existsSync(lifecyclePath)) return;
 	const state = await readWorkflow(root);
 	if (!state) return;
-	const current = await readJsonObject<Record<string, unknown>>(lifecyclePath);
 	const desired = stageForState(state);
+	const inspected = await inspectLifecycleState(root);
+	if (inspected.issues.length > 0) {
+		await rm(lifecyclePath, { recursive: true, force: true });
+		await atomicWriteJson(lifecyclePath, lifecycleState(desired));
+		return;
+	}
+	const current = inspected.value;
 	if (current?.active_stage === desired) return;
 	await atomicWriteJson(lifecyclePath, {
 		...(current ?? lifecycleState(desired)),
@@ -412,6 +542,31 @@ async function runIph(
 			root,
 		};
 	}
+	const skillLock = await verifySkillLock(skillDir);
+	if (!skillLock.ok) {
+		return {
+			status: "BLOCKED",
+			exitCode: 2,
+			stdout: "",
+			stderr: `Authoritative IPH checkout failed the pinned ${skillLock.commit ?? "unknown"} lock: ${skillLock.reason}`,
+			root,
+			skillDir,
+		};
+	}
+	if (subcommand === "validate") {
+		try {
+			await syncLifecycle(root);
+		} catch (error) {
+			return {
+				status: "INVALID",
+				exitCode: 1,
+				stdout: "",
+				stderr: `cannot canonicalize ${LIFECYCLE_FILE}: ${error instanceof Error ? error.message : String(error)}`,
+				root,
+				skillDir,
+			};
+		}
+	}
 	const python = process.env.IPH_PYTHON?.trim() || "python3";
 	const command = [
 		python,
@@ -433,7 +588,20 @@ async function runIph(
 			child.exited,
 		]);
 		signal?.removeEventListener("abort", abort);
-		if (exitCode === 0 && subcommand !== "validate" && subcommand !== "handover") await syncLifecycle(root);
+		if (exitCode === 0 && subcommand !== "handover" && subcommand !== "validate") {
+			try {
+				await syncLifecycle(root);
+			} catch (error) {
+				return {
+					status: "INVALID",
+					exitCode: 1,
+					stdout,
+					stderr: [stderr.trim(), error instanceof Error ? error.message : String(error)].filter(Boolean).join("\n"),
+					root,
+					skillDir,
+				};
+			}
+		}
 		return { status: statusForExit(exitCode), exitCode, stdout, stderr, root, skillDir };
 	} catch (error) {
 		return {
@@ -607,13 +775,17 @@ function inputPaths(input: Record<string, unknown>): string[] {
 	return values;
 }
 
-function relativeTarget(cwd: string, target: string): string {
+function relativeTarget(cwd: string, root: string, target: string): string {
 	const absolute = path.isAbsolute(target) ? path.normalize(target) : path.resolve(cwd, target);
-	return path.relative(cwd, absolute).split(path.sep).join("/");
+	return path.relative(root, absolute).split(path.sep).join("/");
 }
 
 function isStateTarget(relative: string): boolean {
 	return relative === WORKFLOW_FILE || relative.endsWith(`/${WORKFLOW_FILE}`);
+}
+
+function isLifecycleTarget(relative: string): boolean {
+	return relative === LIFECYCLE_FILE || relative.endsWith(`/${LIFECYCLE_FILE}`);
 }
 
 function isReviewTarget(relative: string): boolean {
@@ -818,7 +990,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 	const unsubscribeLifecycle = pi.events.on(SUBAGENT_LIFECYCLE_CHANNEL, recordSubagentLifecycle);
 	pi.on("session_shutdown", () => unsubscribeLifecycle());
 
-	const rootField = z.string().optional().describe("Research root; defaults to the session cwd");
+	const rootField = z.string().optional().describe("Research root; defaults to the nearest ancestor containing workflow_state.json");
 	const strictField = z.boolean().default(false).describe("Promote new checks to INVALID");
 
 	pi.registerTool({
@@ -834,6 +1006,12 @@ export default function iphExtension(pi: ExtensionAPI) {
 			root: rootField,
 		}),
 		async execute(_id, params, signal, _update, ctx) {
+			const existingRoot = findResearchRoot(ctx.cwd);
+			if (existingRoot) {
+				return toolResult(
+					blockedResult(existingRoot, `bootstrap refused: this session already belongs to research root ${existingRoot}`),
+				);
+			}
 			return toolResult(
 				await bootstrap(
 					resolveRoot(ctx.cwd, params.root),
@@ -851,13 +1029,13 @@ export default function iphExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "iph_validate",
 		label: "IPH Validate",
-		description: "Run the authoritative iph validator and preserve READY/INVALID/BLOCKED/MIGRATION_REQUIRED",
-		approval: "read",
+		description: "Canonicalize the derived lifecycle pointer, then run the authoritative iph validator and preserve its exit meaning",
+		approval: "write",
 		loadMode: "essential",
 		parameters: z.object({ root: rootField, strict: strictField }),
 		async execute(_id, params, signal, _update, ctx) {
 			return toolResult(
-				await runIph(resolveRoot(ctx.cwd, params.root), "validate", params.strict ? ["--strict-new-checks"] : [], signal),
+				await runIph(resolveResearchRoot(ctx.cwd, params.root), "validate", params.strict ? ["--strict-new-checks"] : [], signal),
 			);
 		},
 	});
@@ -891,7 +1069,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 			for (const artifact of params.artifacts) args.push("--artifact", artifact);
 			if (params.contribution) args.push("--contribution", params.contribution);
 			if (params.blockedReason) args.push("--blocked-reason", params.blockedReason);
-			return toolResult(await runIph(resolveRoot(ctx.cwd, params.root), "advance", args, signal));
+			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, params.root), "advance", args, signal));
 		},
 	});
 
@@ -903,7 +1081,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 		parameters: z.object({ note: z.string().min(1), strict: strictField, root: rootField }),
 		async execute(_id, params, signal, _update, ctx) {
 			const args = ["--note", params.note, ...(params.strict ? ["--strict-new-checks"] : [])];
-			return toolResult(await runIph(resolveRoot(ctx.cwd, params.root), "start-collision-round", args, signal));
+			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, params.root), "start-collision-round", args, signal));
 		},
 	});
 
@@ -916,7 +1094,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 		async execute(_id, params, signal, _update, ctx) {
 			return toolResult(
 				await runIph(
-					resolveRoot(ctx.cwd, params.root),
+					resolveResearchRoot(ctx.cwd, params.root),
 					"repair-collision-round",
 					params.strict ? ["--strict-new-checks"] : [],
 					signal,
@@ -938,8 +1116,9 @@ export default function iphExtension(pi: ExtensionAPI) {
 			root: rootField,
 		}),
 		async execute(_id, params, signal, _update, ctx) {
-			const root = resolveRoot(ctx.cwd, params.root);
-			if (root !== path.resolve(ctx.cwd)) {
+			const discoveredRoot = resolveResearchRoot(ctx.cwd);
+			const root = resolveResearchRoot(ctx.cwd, params.root);
+			if (root !== discoveredRoot) {
 				return toolResult(
 					blockedResult(root, "iph_review may only seal the reviewer task's own research root"),
 				);
@@ -965,7 +1144,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 		parameters: z.object({ recoveryNote: z.string().min(1), strict: strictField, root: rootField }),
 		async execute(_id, params, signal, _update, ctx) {
 			const args = ["--recovery-note", params.recoveryNote, ...(params.strict ? ["--strict-new-checks"] : [])];
-			return toolResult(await runIph(resolveRoot(ctx.cwd, params.root), "clear-lock", args, signal));
+			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, params.root), "clear-lock", args, signal));
 		},
 	});
 
@@ -978,7 +1157,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 		async execute(_id, params, signal, _update, ctx) {
 			return toolResult(
 				await runIph(
-					resolveRoot(ctx.cwd, params.root),
+					resolveResearchRoot(ctx.cwd, params.root),
 					"register-exploration",
 					["--path", params.path, "--desc", params.description],
 					signal,
@@ -994,22 +1173,25 @@ export default function iphExtension(pi: ExtensionAPI) {
 		approval: "read",
 		parameters: z.object({ root: rootField }),
 		async execute(_id, params, signal, _update, ctx) {
-			return toolResult(await runIph(resolveRoot(ctx.cwd, params.root), "handover", [], signal));
+			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, params.root), "handover", [], signal));
 		},
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
-		const root = ctx.cwd;
+		const root = findResearchRoot(ctx.cwd) ?? path.resolve(ctx.cwd);
 		const statePath = path.join(root, WORKFLOW_FILE);
 		if (!existsSync(statePath)) {
 			const skillDir = resolveSkillDir();
+			const skillLock = skillDir ? await verifySkillLock(skillDir) : undefined;
 			const guidance = [
 				"<iph-runtime-state>",
 				"mode=GUIDED",
 				"No workflow_state.json exists in the current directory.",
 				"Confirm the research deliverable type and a stable workflow ID, then call iph_bootstrap.",
 				"Do not choose an innovation path, search deeply, advance state, or run research computation.",
-				skillDir ? `authoritative_skill=${skillDir}` : "blocked: set IPH_SKILL_DIR to the authoritative skill checkout",
+				skillDir && skillLock?.ok
+					? `authoritative_skill=${skillDir} pinned_commit=${skillLock.commit}`
+					: `blocked: ${skillLock?.reason ?? "set IPH_SKILL_DIR to the authoritative skill checkout"}`,
 				"</iph-runtime-state>",
 			].join("\n");
 			return { systemPrompt: [...event.systemPrompt, guidance] };
@@ -1023,20 +1205,57 @@ export default function iphExtension(pi: ExtensionAPI) {
 				],
 			};
 		}
-		const lifecycle = await readJsonObject<Record<string, unknown>>(path.join(root, LIFECYCLE_FILE));
+		const lifecyclePath = path.join(root, LIFECYCLE_FILE);
+		const inspectedLifecycle = await inspectLifecycleState(root, stageForState(state));
+		const lifecycle = inspectedLifecycle.value;
+		const lifecycleIssues = inspectedLifecycle.issues;
+		if (lifecycleIssues.length > 0) {
+			const missing = !existsSync(lifecyclePath);
+			return {
+				systemPrompt: [
+					...event.systemPrompt,
+					[
+						"<iph-runtime-state>",
+						`STOP: ${LIFECYCLE_FILE} failed harness validation at research_root=${root}.`,
+						...lifecycleIssues.map(issue => `- ${issue}`),
+						missing
+							? "Only recovery action: call iph_validate to create the canonical lifecycle pointer before Python validation."
+							: `Only recovery action: call iph_validate; the harness first rebuilds ${LIFECYCLE_FILE} from canonical derived pointers, then Python validates the research state.`,
+						"Do not advance or compute while lifecycle state is invalid.",
+						"</iph-runtime-state>",
+					].join("\n"),
+				],
+			};
+		}
 		return { systemPrompt: [...event.systemPrompt, renderStateContext(state, lifecycle?.active_stage)] };
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
-		const state = await readWorkflow(ctx.cwd);
+		const root = findResearchRoot(ctx.cwd);
+		if (!root) return;
+		const state = await readWorkflow(root);
 		if (!state) return;
 		const reviewerIdentity = reviewerIdentityForContext(ctx);
+		const inspectedLifecycle = await inspectLifecycleState(root, stageForState(state));
+		const lifecycleIssues = inspectedLifecycle.issues;
+		if (lifecycleIssues.length > 0) {
+			const recoveryRead = ["read", "grep", "glob"].includes(event.toolName);
+			if (event.toolName !== "iph_validate" && !recoveryRead) {
+				return {
+					block: true,
+					reason: `IPH STOP: invalid ${LIFECYCLE_FILE}; only inspect it or call iph_validate to rebuild it after Python validation. ${lifecycleIssues.join("; ")}`,
+				};
+			}
+		}
 
 		if (event.toolName === "write" || event.toolName === "edit") {
 			for (const target of inputPaths(event.input)) {
-				const relative = relativeTarget(ctx.cwd, target);
+				const relative = relativeTarget(ctx.cwd, root, target);
 				if (isStateTarget(relative)) {
 					return { block: true, reason: "Direct workflow_state.json mutation is forbidden; use an iph_* tool." };
+				}
+				if (isLifecycleTarget(relative)) {
+					return { block: true, reason: "Direct lifecycle_state.json mutation is forbidden while it is valid; use an iph_* tool." };
 				}
 				if (isReviewTarget(relative)) {
 					if (reviewIsRegistered(state)) {
@@ -1059,6 +1278,9 @@ export default function iphExtension(pi: ExtensionAPI) {
 			const command = normalizedCommand(event.input);
 			if (bashMutatesNamedFile(command, WORKFLOW_FILE)) {
 				return { block: true, reason: "Shell mutation of workflow_state.json is forbidden; use an iph_* tool." };
+			}
+			if (bashMutatesNamedFile(command, LIFECYCLE_FILE)) {
+				return { block: true, reason: "Shell mutation of lifecycle_state.json is forbidden; use iph_validate to rebuild it." };
 			}
 			if (
 				(bashMutatesNamedFile(command, "independent_audit.json") || bashMutatesNamedFile(command, REVIEW_DIR)) &&
@@ -1085,7 +1307,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 				pendingSnapshots.set(
 					`${ctx.sessionManager.getSessionId()}\0${event.toolCallId}`,
 					await captureProtectedSnapshot(
-						ctx.cwd,
+						root,
 						registered || !reviewerIdentity,
 						registered && Boolean(reviewerIdentity),
 						text(state.artifacts?.independent_audit),
@@ -1136,7 +1358,8 @@ export default function iphExtension(pi: ExtensionAPI) {
 
 	pi.on("session_stop", async (event, ctx) => {
 		if (isSubagentSession(ctx)) return;
-		const root = ctx.cwd;
+		const root = findResearchRoot(ctx.cwd);
+		if (!root) return;
 		const statePath = path.join(root, WORKFLOW_FILE);
 		if (!existsSync(statePath)) return;
 		const result = await runIph(root, "validate", ["--strict-new-checks"], event.signal);
