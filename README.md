@@ -130,25 +130,35 @@ FINAL_LOCK = N0-4C AND V4 AND current independent audit
 被手动修改，OMP 应停止并报告差异，不覆盖现有内容。
 
 ```text
-请为当前用户安装并配置最新版 Research Harness：
-@prcbooboo/omp-research-harness
+请为当前用户安装并配置最新版 Research Harness。只使用下面两个官方仓库和指定 npm 包，
+不要搜索或安装同名 fork：
+
+- Research Harness 产品源码：https://github.com/Robin9989Law/omp-research-harness
+- OMP 插件 npm 包：https://www.npmjs.com/package/@prcbooboo/omp-research-harness
+- 权威 IPH 规则与 validator：https://github.com/Robin9989Law/innovation-proposition-hunting
 
 请严格完成以下步骤：
 1. 检查 OMP、Bun 和 Python 版本是否满足插件要求。
-2. 使用 `omp plugin install @prcbooboo/omp-research-harness@latest` 安装插件。
-3. 读取插件内的 `config/iph-lock.json`，把 authoritative
-   innovation-proposition-hunting checkout 放在标准用户技能目录，并切换到 lock 指定的
-   commit。已有 checkout 若有未提交修改，不得 reset 或覆盖，直接停止并报告。
+2. 从 npm 安装官方包：
+   `omp plugin install @prcbooboo/omp-research-harness@latest`
+   安装后核对 package.json 中的 repository 必须指向上面的 Research Harness 产品源码。
+3. 读取已安装插件内的 `config/iph-lock.json`。从上面的权威 IPH 仓库克隆
+   innovation-proposition-hunting，放入 OMP 能发现的标准用户技能目录，并切换到 lock 指定的
+   commit；逐项验证 lock 中的文件 SHA-256。已有 checkout 若有未提交修改，不得 reset、覆盖
+   或静默换目录，直接停止并报告。
 4. 运行 `omp plugin doctor @prcbooboo/omp-research-harness`。
 5. 先运行用户配置安装器的 `install --dry-run`。如果发现旧版安装清单，先检查配置漂移；
    无漂移时事务化卸载旧配置后再安装最新版，有漂移时停止并报告。
-6. 安装科研 SYSTEM 和模型角色，保持以下路由：
-   - default、commit：minimax-code-cn/MiniMax-M3:high
-   - atomic、collision：openai-codex/gpt-5.6-sol:high
-   - review：deepseek/deepseek-v4-pro:high
+6. 安装科研 SYSTEM，并按“角色—职责—模型”配置五个受管 modelRoles：
+   - default：运行主研究流程 → minimax-code-cn/MiniMax-M3:high
+   - atomic：atomic-claim-extractor，提取原子观点 → openai-codex/gpt-5.6-sol:high
+   - collision：collision-synthesizer，执行文献碰撞与证伪综合 → openai-codex/gpt-5.6-sol:high
+   - review：iph-reviewer，执行独立 V3/V4 复核 → deepseek/deepseek-v4-pro:high
+   - commit：生成 Git commit message → minimax-code-cn/MiniMax-M3:high
    不要修改 task、vision、plan、designer 等非受管角色。
 7. 最后运行安装器 `status`、插件 doctor 和模型角色读取，报告插件版本、权威 IPH commit、
-   SYSTEM 是否匹配及全部 roleDrift。任何检查失败都不要继续创建研究工作流。
+   三个来源 URL、SYSTEM 是否匹配，以及五个受管角色的实际模型和全部 roleDrift。
+   任何来源、哈希、模型或健康检查不匹配，都不要继续创建研究工作流。
 
 安装完成后提醒我退出并重新启动 OMP，让新的插件工具和 SYSTEM 生效。
 ```
