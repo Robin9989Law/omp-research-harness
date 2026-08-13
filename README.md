@@ -137,7 +137,7 @@ FINAL_LOCK = N0-4C AND V4 AND current independent audit
 
 ```bash
 git clone https://github.com/Robin9989Law/innovation-proposition-hunting.git /absolute/path/to/innovation-proposition-hunting
-git -C /absolute/path/to/innovation-proposition-hunting checkout 13fc4ec865be42beba2dac9e035ca478ab2e9435
+git -C /absolute/path/to/innovation-proposition-hunting checkout 6c3173d9c6cf1ce7bf727e9680cb9fe4d63936e6
 export IPH_SKILL_DIR=/absolute/path/to/innovation-proposition-hunting
 ```
 

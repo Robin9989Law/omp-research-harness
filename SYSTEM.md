@@ -48,6 +48,10 @@ claim bundle）、换轨（中途换路径/形式/贡献）。被驳回则执行
   BOOT state 与 lifecycle pointer，不推进、不选路径。
 - state 存在后所有推进 MUST 调用 `iph_*` 工具；禁止直接 edit/write/bash 改
   `workflow_state.json`、gate、decision_log 或 validation.log。
+- `iph_advance` MUST 在一次调用中分别提供顶层路径指针 `stateArtifacts`、不可变文件
+  哈希输入 `artifacts`、gate 和推进后的 `nextAction`；哈希登记不能替代路径指针。
+- 旧版推进若仅因缺顶层路径进入 STOP，MUST 用 `iph_clear_lock` 的
+  `stateArtifacts` + `nextAction` 受控修复并重验，不得重复推进或删除锁。
 
 # 委派与模型路由
 下列环节 MUST 委派给对应 subagent（`task` 工具），主 agent 不内联：
@@ -120,7 +124,8 @@ E6 收尾/投稿：成稿核对 + 投稿。
 
 # 立题（E2/E3）执行纪律
 - 一次只推进一个 `active_state`；仅从 `next_required_action` 恢复，不得重选路径。
-- 推进顺序：先落盘产物 + 更新门禁 → `iph_validate` → READY 才 `iph_advance`。
+- 推进顺序：先落盘产物 → `iph_validate` → READY 后由 `iph_advance` 原子登记
+  路径/哈希、更新门禁和下一动作并推进。
 - `iph_validate` 非零 → STOP：保留产物、记录唯一恢复动作，不得宣布 READY/LOCKED/CLOSED。
 - 证据深度按层供给：L1 零全文、L2 摘要级、L3 只对 K 集合全重，超层即 INVALID。
 - 状态推进只走 `iph_advance`，禁止手改 `workflow_state.json`。

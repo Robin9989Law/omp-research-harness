@@ -1043,7 +1043,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "iph_advance",
 		label: "IPH Advance",
-		description: "Validate, atomically bookkeep artifacts/gates, and advance through the authoritative iph CLI",
+		description: "Validate, then atomically write state artifact pointers, immutable hashes, gates, next action, and the state transition",
 		approval: "write",
 		loadMode: "essential",
 		parameters: z.object({
@@ -1056,7 +1056,9 @@ export default function iphExtension(pi: ExtensionAPI) {
 			]),
 			note: z.string().min(1),
 			gates: z.array(z.string()).default(() => []).describe("Gate assignments such as scope_locked=true"),
-			artifacts: z.array(z.string()).default(() => []).describe("Canonical root-relative artifacts to hash"),
+			artifacts: z.array(z.string()).default(() => []).describe("Canonical root-relative immutable files to hash into decision_log"),
+			stateArtifacts: z.array(z.string()).default(() => []).describe("Top-level artifact pointer assignments such as scope_lock=scope_lock.md; required when a newly true gate depends on the artifact"),
+			nextAction: z.string().min(1).describe("The single next_required_action after this transition"),
 			contribution: z.enum(["NONE", "M", "A", "B", "C"]).optional(),
 			blockedReason: z.string().optional(),
 			strict: strictField,
@@ -1068,15 +1070,18 @@ export default function iphExtension(pi: ExtensionAPI) {
 				note: string;
 				gates: string[];
 				artifacts: string[];
+				stateArtifacts?: string[];
+				nextAction: string;
 				contribution?: string;
 				blockedReason?: string;
 				strict: boolean;
 				root?: string;
 			};
-			const args = ["--to", input.to, "--note", input.note];
+			const args = ["--to", input.to, "--note", input.note, "--next-action", input.nextAction];
 			if (input.strict) args.push("--strict-new-checks");
 			for (const gate of input.gates) args.push("--set-gate", gate);
 			for (const artifact of input.artifacts) args.push("--artifact", artifact);
+			for (const artifact of input.stateArtifacts ?? []) args.push("--set-artifact", artifact);
 			if (input.contribution) args.push("--contribution", input.contribution);
 			if (input.blockedReason) args.push("--blocked-reason", input.blockedReason);
 			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, input.root), "advance", args, signal));
@@ -1152,12 +1157,20 @@ export default function iphExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "iph_clear_lock",
 		label: "IPH Clear STOP Lock",
-		description: "Revalidate a completed recovery action and clear the iph STOP lock with an audit note",
+		description: "Optionally repair only artifact pointers/next action, then revalidate and clear the iph STOP lock with an audit note",
 		approval: "write",
-		parameters: z.object({ recoveryNote: z.string().min(1), strict: strictField, root: rootField }),
+		parameters: z.object({
+			recoveryNote: z.string().min(1),
+			stateArtifacts: z.array(z.string()).default(() => []).describe("STOP recovery assignments such as scope_lock=scope_lock.md"),
+			nextAction: z.string().min(1).optional().describe("Correct the stale next_required_action while recovering"),
+			strict: strictField,
+			root: rootField,
+		}),
 		async execute(_id, params, signal, _update, ctx) {
-			const input = params as { recoveryNote: string; strict: boolean; root?: string };
+			const input = params as { recoveryNote: string; stateArtifacts?: string[]; nextAction?: string; strict: boolean; root?: string };
 			const args = ["--recovery-note", input.recoveryNote, ...(input.strict ? ["--strict-new-checks"] : [])];
+			for (const artifact of input.stateArtifacts ?? []) args.push("--set-artifact", artifact);
+			if (input.nextAction) args.push("--next-action", input.nextAction);
 			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, input.root), "clear-lock", args, signal));
 		},
 	});

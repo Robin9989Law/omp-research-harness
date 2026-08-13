@@ -2,8 +2,16 @@
 
 ## Unreleased
 
+## 0.0.3 - 2026-08-13
+
 - 原子观点与文献碰撞默认模型恢复为 OMP `openai-codex/gpt-5.6-sol:high`；独立复核继续使用 DeepSeek V4 Pro。
 - commit 角色改用 MiniMax M3，与默认主流程共用模型，避免不必要的模型切换。
+- 修复状态推进只记录 `decision_log` 哈希、未登记顶层 artifact 路径而导致的
+  `BOOT → SCOPE_LOCK` post-validation STOP。
+- `iph_advance` 现在原子提交路径指针、不可变哈希、gate、下一动作与状态迁移。
+- `iph_clear_lock` 增加受控 artifact-map 与 stale next-action 恢复，不再需要手改
+  `workflow_state.json` 或删除 STOP 锁。
+- 权威 IPH 更新并锁定到 `6c3173d9c6cf1ce7bf727e9680cb9fe4d63936e6`。
 
 ## 0.0.2 - 2026-08-13
 

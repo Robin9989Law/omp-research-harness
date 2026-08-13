@@ -118,6 +118,56 @@ try {
 	assert(rollback.isError === true, "OMP tool_result hook did not mark rolled-back tamper as an error");
 	assert(await readFile(statePath, "utf8") === originalState, "OMP tool_result hook did not restore workflow_state.json");
 
+	await writeFile(path.join(root, "scope_lock.md"), "# Scope lock\n");
+	await writeFile(path.join(root, "hierarchy_status.md"), "# Hierarchy status\n");
+	const advance = await execute(
+		"iph_advance",
+		{
+			to: "SCOPE_LOCK",
+			note: "scope contract frozen",
+			gates: ["scope_locked=true"],
+			artifacts: ["scope_lock.md", "hierarchy_status.md"],
+			stateArtifacts: ["scope_lock=scope_lock.md", "hierarchy_status=hierarchy_status.md"],
+			nextAction: "Drain prior-round claims before frontier search.",
+			strict: true,
+		},
+		main,
+	);
+	assert(!advance.isError, `atomic BOOT to SCOPE_LOCK advance failed: ${JSON.stringify(advance)}`);
+	const advancedState = JSON.parse(await readFile(statePath, "utf8"));
+	assert(advancedState.artifacts?.scope_lock === "scope_lock.md", "advance omitted the scope_lock state pointer");
+	assert(
+		advancedState.artifacts?.hierarchy_status === "hierarchy_status.md",
+		"advance omitted the hierarchy_status state pointer",
+	);
+	assert(
+		advancedState.next_required_action === "Drain prior-round claims before frontier search.",
+		"advance left a stale next_required_action",
+	);
+
+	delete advancedState.artifacts.scope_lock;
+	delete advancedState.artifacts.hierarchy_status;
+	await writeFile(statePath, `${JSON.stringify(advancedState, null, 2)}\n`);
+	const invalidPointers = await execute("iph_validate", { strict: true }, main);
+	assert(invalidPointers.isError, "validator accepted a gate with missing top-level artifact pointers");
+	const recoveredPointers = await execute(
+		"iph_clear_lock",
+		{
+			recoveryNote: "registered missing scope artifact pointers",
+			stateArtifacts: ["scope_lock=scope_lock.md", "hierarchy_status=hierarchy_status.md"],
+			nextAction: "Drain prior-round claims before frontier search.",
+			strict: true,
+		},
+		main,
+	);
+	assert(!recoveredPointers.isError, `STOP artifact-pointer recovery failed: ${JSON.stringify(recoveredPointers)}`);
+	const recoveredState = JSON.parse(await readFile(statePath, "utf8"));
+	assert(recoveredState.artifacts?.scope_lock === "scope_lock.md", "recovery omitted the scope_lock pointer");
+	assert(
+		recoveredState.artifacts?.hierarchy_status === "hierarchy_status.md",
+		"recovery omitted the hierarchy_status pointer",
+	);
+
 	const parentReview = await execute("iph_review", { verdict: "FAIL", strict: true }, nestedMain);
 	assert(parentReview.isError, "parent session unexpectedly acquired reviewer authority");
 	assert(
@@ -142,7 +192,7 @@ try {
 		"real lifecycle identity was not propagated into the reviewer tool path",
 	);
 
-	process.stdout.write("omp_e2e=READY loader=real tools=9 hooks=rollback root=nested reviewer=lifecycle\n");
+	process.stdout.write("omp_e2e=READY loader=real tools=9 hooks=rollback recovery=artifact-map root=nested reviewer=lifecycle\n");
 } finally {
 	await rm(root, { recursive: true, force: true });
 }

@@ -48,7 +48,7 @@ jobs:
 
       - name: Check out pinned authoritative IPH
         env:
-          IPH_COMMIT: 13fc4ec865be42beba2dac9e035ca478ab2e9435
+          IPH_COMMIT: 6c3173d9c6cf1ce7bf727e9680cb9fe4d63936e6
         run: |
           git clone --filter=blob:none https://github.com/Robin9989Law/innovation-proposition-hunting.git "$RUNNER_TEMP/innovation-proposition-hunting"
           git -C "$RUNNER_TEMP/innovation-proposition-hunting" checkout --detach "$IPH_COMMIT"
