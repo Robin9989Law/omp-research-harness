@@ -8,6 +8,7 @@ import {
 	clearRuntimeRegistryForTests,
 	createBootState,
 	EXIT_STATUS,
+	executableText,
 	findResearchRoot,
 	recordSubagentLifecycle,
 	resolveSkillDir,
@@ -63,6 +64,26 @@ describe("BOOT state", () => {
 });
 
 describe("compute preflight", () => {
+	test("inspects only executable bash and eval fields", () => {
+		const safeBash = executableText("bash", {
+			command: "git status --short",
+			intent: "train and simulate the candidate model",
+			description: "fit the experimental baseline",
+		});
+		const safeEval = executableText("eval", {
+			code: "1 + 1",
+			title: "simulate and fit the model",
+		});
+
+		expect(safeBash).toBe("git status --short");
+		expect(safeEval).toBe("1 + 1");
+		expect(classifyComputeCommand(safeBash)).toBeUndefined();
+		expect(classifyComputeCommand(safeEval)).toBeUndefined();
+		expect(classifyComputeCommand(executableText("bash", { command: "make run_experiment" }))).toContain(
+			"experimental",
+		);
+	});
+
 	test("blocks research scripts", () => {
 		expect(classifyComputeCommand("python3 experiments/train_model.py --seed 1")).toContain("script");
 	});

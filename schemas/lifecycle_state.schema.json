@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Robin9989Law/research-harness/schemas/lifecycle_state.schema.json",
+  "$id": "https://github.com/Robin9989Law/omp-research-harness/schemas/lifecycle_state.schema.json",
   "title": "Research lifecycle state",
   "type": "object",
   "additionalProperties": false,

@@ -722,10 +722,11 @@ async function bootstrap(
 	return runIph(root, "validate", ["--strict-new-checks"], signal);
 }
 
-function normalizedCommand(input: object): string {
-	return Object.values(input as Record<string, unknown>)
-		.flatMap(value => (typeof value === "string" ? [value] : []))
-		.join("\n");
+export function executableText(toolName: string, input: object): string {
+	const field = toolName === "bash" ? "command" : toolName === "eval" ? "code" : undefined;
+	if (!field) return "";
+	const value = (input as Record<string, unknown>)[field];
+	return typeof value === "string" ? value : "";
 }
 
 function isIphMaintenance(command: string): boolean {
@@ -750,14 +751,6 @@ export function classifyComputeCommand(command: string): string | undefined {
 		/\b(?:train|fit|grid[_-]?search|cross[_-]?val(?:idate|idation)?|sweep|bootstrap|monte[_-]?carlo|simulate|run[_-]?experiment)\b/i;
 	if (experiment.test(command)) return "experimental action before COMPUTE authorization";
 	return undefined;
-}
-
-function sessionPrompt(ctx: ExtensionContext): string {
-	return ctx.getSystemPrompt().join("\n");
-}
-
-function isSubagentSession(ctx: ExtensionContext): boolean {
-	return sessionPrompt(ctx).includes("You are operating on a piece of work assigned to you by the main agent.");
 }
 
 function reviewerIdentityForContext(ctx: ExtensionContext): ReviewerRuntimeIdentity | undefined {
@@ -1298,7 +1291,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 		}
 
 		if (event.toolName === "bash") {
-			const command = normalizedCommand(event.input);
+			const command = executableText(event.toolName, event.input);
 			if (bashMutatesNamedFile(command, WORKFLOW_FILE)) {
 				return { block: true, reason: "Shell mutation of workflow_state.json is forbidden; use an iph_* tool." };
 			}
@@ -1314,7 +1307,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 		}
 
 		if ((event.toolName === "bash" || event.toolName === "eval") && state.gates?.compute_authorized !== true) {
-			const command = normalizedCommand(event.input);
+			const command = executableText(event.toolName, event.input);
 			const reason = classifyComputeCommand(command);
 			if (reason) {
 				return {
@@ -1380,7 +1373,6 @@ export default function iphExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("session_stop", async (event, ctx) => {
-		if (isSubagentSession(ctx)) return;
 		const root = findResearchRoot(ctx.cwd);
 		if (!root) return;
 		const statePath = path.join(root, WORKFLOW_FILE);
