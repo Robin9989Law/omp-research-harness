@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { loadExtensions } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
 import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
+import { parseNpmPackOutput } from "./npm-pack-output";
 
 function assert(condition: unknown, message: string): asserts condition {
 	if (!condition) throw new Error(message);
@@ -33,7 +34,7 @@ try {
 	const packOutput = await run(["npm", "pack", "--ignore-scripts", "--json", "--pack-destination", root], {
 		cwd: projectRoot,
 	});
-	const packed = JSON.parse(packOutput) as Array<{ filename?: string }>;
+	const packed = parseNpmPackOutput(packOutput);
 	const filename = packed[0]?.filename;
 	assert(filename, `npm pack did not report a tarball: ${packOutput}`);
 	const tarball = path.join(root, filename);
