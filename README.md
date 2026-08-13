@@ -45,11 +45,23 @@ omp plugin doctor @robinlaw/omp-research-harness
 设计要求隔离开发，因此仓库本身不会自动修改 `~/.omp/agent/`。准备上线时运行：
 
 ```bash
-./scripts/install-user-config.sh --dry-run
-./scripts/install-user-config.sh
+./scripts/install-user-config.sh install --dry-run
+./scripts/install-user-config.sh install
+./scripts/install-user-config.sh status
 ```
 
-安装器会先备份已有 `SYSTEM.md`，再安装本项目的科研系统提示，并逐项写入模型角色。
+安装器会把已有 `SYSTEM.md`、安装前 model roles 和受管角色集合写进本次 transaction
+manifest；任一步失败都会恢复两者。卸载默认拒绝覆盖安装后被用户修改的受管值，确认后可
+使用 `--force`：
+
+```bash
+./scripts/install-user-config.sh uninstall --dry-run
+./scripts/install-user-config.sh uninstall
+# 仅在 status 显示受管值漂移且确定要恢复安装前值时：
+./scripts/install-user-config.sh uninstall --force
+```
+
+上述命令只管理用户配置，不隐式安装或删除插件。
 插件仍需通过 `omp plugin link .`（开发）或 `omp plugin install <package>`（发布）安装。
 
 ## 模型角色
@@ -95,9 +107,23 @@ validate；失败时只注入一项恢复动作。
 
 ```bash
 bun run check
+bun run release:check
 ```
 
 该命令执行严格 TypeScript 检查、单元/安全测试、真实 OMP extension loader + 工具/hook
-E2E、用 authoritative iph 对新建 BOOT state 做 strict 验证，并检查插件、代理、命令、
-schema 和配置交付物齐全。GitHub CI 还会从固定 commit checkout 上游并运行其完整 pytest
-回归套件。
+E2E、隔离配置目录中的安装/故障回滚/卸载 E2E、用 authoritative iph 对新建 BOOT state
+做 strict 验证，并检查插件、代理、命令、schema 和配置交付物齐全。`release:check` 还
+生成并解包 npm tarball，验证公开 provenance 配置、runtime-only 文件清单、解包后的真实
+OMP loader 和安装器。GitHub CI 会从固定 commit checkout 上游并运行其完整 pytest 回归
+套件。
+
+实际发布只通过手动触发的 `release` workflow：默认 `dry_run=true`，显式关闭后仍需
+`npm-release` environment 审批，并拒绝覆盖 registry 中已存在的版本；workflow 使用
+npm trusted publishing/OIDC 附加 provenance，并在打包前把 `repository.url` 精确绑定到
+实际运行 workflow 的公开 GitHub 仓库。当前仓库不会因普通 push 或 tag 自动发布。
+
+npm 首次发布前还不存在 package，因而无法预先建立 trusted publisher：仅第一次在
+`npm-release` environment 临时配置具备 publish 权限的 granular `NPM_TOKEN`；发布后立即
+在 npm package settings 中把 `release.yml`、该 GitHub 仓库和 `npm-release` environment
+登记为 trusted publisher，删除 secret，后续即走纯 OIDC。workflow 未配置 token 时不会
+写入空 `_authToken`，避免阻断 OIDC exchange。

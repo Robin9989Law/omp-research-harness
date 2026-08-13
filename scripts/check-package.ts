@@ -8,6 +8,10 @@ const required = [
 	"SYSTEM.md",
 	"extensions/iph.ts",
 	"scripts/omp-e2e.ts",
+	"scripts/install-e2e.ts",
+	"scripts/package-e2e.ts",
+	"scripts/install-user-config.sh",
+	"scripts/manage-user-config.ts",
 	"tsconfig.json",
 	"agents/atomic-claim-extractor.md",
 	"agents/collision-synthesizer.md",
@@ -26,8 +30,21 @@ for (const relative of required) {
 }
 
 const pkg = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8"));
-if (pkg.version !== "0.0.1" || !pkg.omp?.extensions?.includes("extensions/iph.ts")) {
+if (pkg.version !== "0.0.1" || pkg.omp?.version !== pkg.version || !pkg.omp?.extensions?.includes("extensions/iph.ts")) {
 	throw new Error("package.json is not a V0.0.1 OMP extension package");
+}
+if (pkg.private || pkg.publishConfig?.access !== "public" || pkg.publishConfig?.provenance !== true) {
+	throw new Error("package.json is not configured for a public provenance-backed release");
+}
+const expectedRepository = process.env.EXPECTED_GITHUB_REPOSITORY;
+if (expectedRepository) {
+	const expectedUrl = `https://github.com/${expectedRepository}`;
+	if (pkg.repository?.type !== "git" || pkg.repository?.url !== expectedUrl) {
+		throw new Error(`package repository must match provenance source exactly: ${expectedUrl}`);
+	}
+}
+for (const runtimeFile of ["scripts/install-user-config.sh", "scripts/manage-user-config.ts"]) {
+	if (!pkg.files?.includes(runtimeFile)) throw new Error(`published package omits runtime file: ${runtimeFile}`);
 }
 
 const skillDir = resolveSkillDir();
