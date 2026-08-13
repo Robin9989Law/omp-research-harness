@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@robinlaw/omp-research-harness",
+      "name": "@prcbooboo/omp-research-harness",
       "devDependencies": {
         "@oh-my-pi/pi-coding-agent": "17.2.15",
         "@types/bun": "1.3.14",

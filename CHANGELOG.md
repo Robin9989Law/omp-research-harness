@@ -2,6 +2,7 @@
 
 ## 0.0.1 - 2026-08-13
 
+- npm 发布坐标确定为 `@prcbooboo/omp-research-harness`。
 - 接入 innovation-proposition-hunting Schema 3.0 状态机，固定权威上游提交和内容哈希。
 - 增加 BOOT、状态推进、独立复核、探索登记、碰撞修复与 strict validate OMP 工具。
 - 将 reviewer 身份绑定到真实 OMP subagent lifecycle，并保护研究状态与复核证据不被旁路篡改。

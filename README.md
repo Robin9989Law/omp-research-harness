@@ -39,7 +39,7 @@ cd /path/to/科研harness
 bun install --frozen-lockfile
 bun run check
 omp plugin link .
-omp plugin doctor @robinlaw/omp-research-harness
+omp plugin doctor @prcbooboo/omp-research-harness
 ```
 
 设计要求隔离开发，因此仓库本身不会自动修改 `~/.omp/agent/`。准备上线时运行：

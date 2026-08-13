@@ -31,7 +31,12 @@ for (const relative of required) {
 }
 
 const pkg = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8"));
-if (pkg.version !== "0.0.1" || pkg.omp?.version !== pkg.version || !pkg.omp?.extensions?.includes("extensions/iph.ts")) {
+if (
+	pkg.name !== "@prcbooboo/omp-research-harness" ||
+	pkg.version !== "0.0.1" ||
+	pkg.omp?.version !== pkg.version ||
+	!pkg.omp?.extensions?.includes("extensions/iph.ts")
+) {
 	throw new Error("package.json is not a V0.0.1 OMP extension package");
 }
 if (pkg.private || pkg.publishConfig?.access !== "public" || pkg.publishConfig?.provenance !== true) {

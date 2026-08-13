@@ -1,5 +1,5 @@
 {
-  "name": "@robinlaw/omp-research-harness",
+  "name": "@prcbooboo/omp-research-harness",
   "version": "0.0.1",
   "description": "Research-first OMP harness backed by the innovation-proposition-hunting state machine",
   "type": "module",
