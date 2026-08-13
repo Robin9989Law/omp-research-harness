@@ -69,7 +69,7 @@ try {
 		"install did not deploy the harness SYSTEM.md",
 	);
 	const installedRoles = await getRoles(agentDir);
-	assert(installedRoles.atomic === "openai/gpt-5.6-sol:high", "install did not set managed model roles");
+	assert(installedRoles.atomic === "deepseek/deepseek-v4-pro:high", "install did not set managed model roles");
 	assert(installedRoles.unrelated === "keep/me", "install clobbered an unrelated model role");
 	const status = await run(agentDir, ["status"]);
 	assert(status.exitCode === 0 && status.stdout.includes('"systemMatches": true'), `status failed: ${status.stderr}`);

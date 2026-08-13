@@ -51,8 +51,8 @@ claim bundle）、换轨（中途换路径/形式/贡献）。被驳回则执行
 
 # 委派与模型路由
 下列环节 MUST 委派给对应 subagent（`task` 工具），主 agent 不内联：
-- 原子观点提取（K_CLAIM_REGISTER）→ `atomic-claim-extractor`（@atomic → gpt-5.6-sol）
-- 文献碰撞综合（SYNTHESIZE_COLLISION）→ `collision-synthesizer`（@collision → gpt-5.6-sol）
+- 原子观点提取（K_CLAIM_REGISTER）→ `atomic-claim-extractor`（@atomic → DeepSeek V4 Pro）
+- 文献碰撞综合（SYNTHESIZE_COLLISION）→ `collision-synthesizer`（@collision → DeepSeek V4 Pro）
 - 独立复核（INDEPENDENT_REVIEW / FINAL_VALIDITY_AUDIT）→ `iph-reviewer`（@review → deepseek-pro）
 复核产物主 agent 只读不写；`iph_review` 必须由 reviewer 在自己的 task session 内调用，
 agent/thread provenance 只接受 OMP lifecycle 运行时值。需补字段只能重派 subagent 并新建

@@ -7,8 +7,8 @@ import * as path from "node:path";
 const MANIFEST_NAME = "research-harness-install.json";
 const MANAGED_ROLES: Record<string, string> = {
 	default: "minimax-code-cn/MiniMax-M3:high",
-	atomic: "openai/gpt-5.6-sol:high",
-	collision: "openai/gpt-5.6-sol:high",
+	atomic: "deepseek/deepseek-v4-pro:high",
+	collision: "deepseek/deepseek-v4-pro:high",
 	review: "deepseek/deepseek-v4-pro:high",
 	commit: "deepseek/deepseek-v4-flash:high",
 };

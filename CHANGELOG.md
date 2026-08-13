@@ -10,3 +10,4 @@
 - 增加 TypeScript、单元测试、真实 OMP loader、安装/打包 E2E、插件 doctor 和权威 IPH
   完整回归 CI。
 - 增加受审批保护的 npm trusted publishing/provenance 手动发布流程。
+- 原子观点、文献碰撞与独立复核统一路由到已完成真实调用验收的 DeepSeek V4 Pro。

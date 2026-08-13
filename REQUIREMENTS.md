@@ -23,7 +23,7 @@
 | Q5 | 无 state 目录行为 | 引导模式（bootstrap 建立研究目录 + workflow_state.json） |
 | Q6 | 基座 | omp（Oh My Pi），非 pi（上游 pi-mono） |
 | Q7 | 版本范围 | V0.0.1：立题做实；其余阶段用 skill + model + harness 自身能力 |
-| Q8 | 模型路由 | 按任务分模型：原子观点/碰撞→gpt-5.6-sol；其他→M3；复核→deepseek-pro；快速→deepseek-flash |
+| Q8 | 模型路由 | 按任务分模型：原子观点/碰撞/复核→DeepSeek V4 Pro；其他→M3；快速→DeepSeek V4 Flash |
 | Q9 | 部署 | 直接当前 omp（不 fork）；打包为公开 provenance OMP 插件（`omp plugin install`）+ 事务化用户级配置（SYSTEM.md / modelRoles，可回滚/卸载）；开发用 `omp plugin link` 本地联调 |
 | Q10 | 生命周期状态 | 薄包装：`lifecycle_state.json` 只存 `active_stage` + 阶段指针，E2/E3 用 iph `workflow_state.json` 作子状态，不动 schema 3.0 |
 | Q11 | 可移植性 | machinery（extension/agents/commands/skills）进插件；SYSTEM.md/modelRoles 走用户配置 + README；iph.py 路径经 `IPH_SKILL_DIR` 抽象，不硬编码，并用随包 lock manifest 固定上游 commit/内容 |
@@ -58,8 +58,8 @@
 |---|---|---|
 | `SYSTEM.md` | `SYSTEM.md` | 科研人格 + 「iph 状态机是默认工作流」指令（替换默认编码人格） |
 | `extensions/iph.ts` | `extensions/iph.ts` | iph CLI 工具化 + 门禁 hook（自动 validate / 状态注入 / 计算拦截） |
-| `agents/atomic-claim-extractor.md` | `agents/atomic-claim-extractor.md` | 原子观点提取 subagent（@atomic → gpt-5.6-sol） |
-| `agents/collision-synthesizer.md` | `agents/collision-synthesizer.md` | 文献碰撞综合 subagent（@collision → gpt-5.6-sol） |
+| `agents/atomic-claim-extractor.md` | `agents/atomic-claim-extractor.md` | 原子观点提取 subagent（@atomic → DeepSeek V4 Pro） |
+| `agents/collision-synthesizer.md` | `agents/collision-synthesizer.md` | 文献碰撞综合 subagent（@collision → DeepSeek V4 Pro） |
 | `agents/iph-reviewer.md` | `agents/iph-reviewer.md` | 独立复核 reviewer（@review → deepseek-pro，承载 V3/V4 硬门） |
 | `commands/*.md` | `commands/*.md` | `/iph`、`/iph-status`、`/iph-review` 斜杠命令 |
 
@@ -74,8 +74,8 @@
 | 角色 | 模型 | 承接 iph 环节 |
 |---|---|---|
 | default | minimax-code-cn/MiniMax-M3:high | 其他工作流（主 agent） |
-| atomic | openai/gpt-5.6-sol:high | K_CLAIM_REGISTER 原子观点 |
-| collision | openai/gpt-5.6-sol:high | SYNTHESIZE_COLLISION 碰撞 |
+| atomic | deepseek/deepseek-v4-pro:high | K_CLAIM_REGISTER 原子观点 |
+| collision | deepseek/deepseek-v4-pro:high | SYNTHESIZE_COLLISION 碰撞 |
 | review | deepseek/deepseek-v4-pro:high | INDEPENDENT_REVIEW / FINAL_VALIDITY_AUDIT |
 | commit | deepseek/deepseek-v4-flash:high | 快速/廉价 |
 

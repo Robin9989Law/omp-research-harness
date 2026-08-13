@@ -69,8 +69,8 @@ manifest；任一步失败都会恢复两者。卸载默认拒绝覆盖安装后
 ```yaml
 modelRoles:
   default: minimax-code-cn/MiniMax-M3:high
-  atomic: openai/gpt-5.6-sol:high
-  collision: openai/gpt-5.6-sol:high
+  atomic: deepseek/deepseek-v4-pro:high
+  collision: deepseek/deepseek-v4-pro:high
   review: deepseek/deepseek-v4-pro:high
   commit: deepseek/deepseek-v4-flash:high
 ```
