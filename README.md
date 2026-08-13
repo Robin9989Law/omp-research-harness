@@ -74,7 +74,7 @@ modelRoles:
   atomic: openai-codex/gpt-5.6-sol:high
   collision: openai-codex/gpt-5.6-sol:high
   review: deepseek/deepseek-v4-pro:high
-  commit: deepseek/deepseek-v4-flash:high
+  commit: minimax-code-cn/MiniMax-M3:high
 ```
 
 安装时可用 YAML/JSON 文件局部覆盖，也可重复使用 `--role`；命令行优先于文件，文件优先于

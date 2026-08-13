@@ -3,6 +3,7 @@
 ## Unreleased
 
 - 原子观点与文献碰撞默认模型恢复为 OMP `openai-codex/gpt-5.6-sol:high`；独立复核继续使用 DeepSeek V4 Pro。
+- commit 角色改用 MiniMax M3，与默认主流程共用模型，避免不必要的模型切换。
 
 ## 0.0.2 - 2026-08-13
 
