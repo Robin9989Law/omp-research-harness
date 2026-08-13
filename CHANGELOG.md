@@ -4,7 +4,7 @@
 
 ## 0.0.4 - 2026-08-14
 
-- 增加 23 节点/22 迁移的系统拓扑审计与 10 类故障注入矩阵，缺边、错向、专家路由
+- 增加 23 节点/22 迁移的系统拓扑审计与 11 类故障注入矩阵，缺边、错向、专家路由
   漂移和 mutable artifact 错误冻结会在测试阶段失败。
 - 修复 `recent_frontier_complete=true` 时 state 时间窗未同步：权威 CLI 现在从本次
   登记的 literature registry 校验并原子同步 `recent_window`。
@@ -14,6 +14,8 @@
   validate/clear-lock 循环。
 - `iph_status` 和 `iph_transition_plan` 明示 `stopLockActive` 与锁摘要，消除模型从
   缺失字段误判锁状态的问题。
+- 11 个 IPH 工具全部标记为 coordinator essential；修复扩展注册了 `iph_clear_lock`
+  但 M3 实际工具面不可见的恢复死锁。
 - 权威 IPH 锁升级到 `636dde23fa637c13d7c305b76f0c5628b0348ebf`。
 
 - M3 remains the default coordinator, while new `frontier` and `layer` roles route the two

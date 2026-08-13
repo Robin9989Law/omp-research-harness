@@ -46,6 +46,7 @@
 | F8 | reviewer 自审或主 agent 改审计 | 拒绝或逐字节回滚 | reviewer/protected artifact 测试 |
 | F9 | 未授权计算 | tool_call 前拦截 | compute preflight 测试 |
 | F10 | lifecycle、skill commit/hash 或安装中途漂移 | STOP 或事务回滚 | lock/install/package E2E |
+| F11 | 工具已注册但未挂到模型可见工具面 | 11 个 IPH 工具全部 essential | 真实 OMP loader 可见性断言 + M3 回合 |
 
 ## 4. 分层测试顺序
 

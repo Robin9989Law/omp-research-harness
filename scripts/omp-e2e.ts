@@ -49,6 +49,10 @@ try {
 		JSON.stringify([...extension.tools.keys()].sort()) === JSON.stringify(expectedTools),
 		`unexpected OMP tool registry: ${JSON.stringify([...extension.tools.keys()].sort())}`,
 	);
+	for (const toolName of expectedTools) {
+		const registered = extension.tools.get(toolName);
+		assert(registered?.definition.loadMode === "essential", `${toolName} is registered but not visible to the coordinator`);
+	}
 
 	const mainSessionFile = path.join(root, "main-session.jsonl");
 	const main = context(root, "main-session", mainSessionFile);

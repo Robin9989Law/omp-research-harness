@@ -1703,6 +1703,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 		label: "IPH Start Collision Round",
 		description: "Start a new falsification collision round from a compliant N0-3 audit",
 		approval: "write",
+		loadMode: "essential",
 		parameters: z.object({ note: z.string().min(1), strict: strictField, root: rootField }),
 		async execute(_id, params, signal, _update, ctx) {
 			const input = params as { note: string; strict: boolean; root?: string };
@@ -1716,6 +1717,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 		label: "IPH Repair Collision Round",
 		description: "Repair only the STOP-locked new collision-round snapshot",
 		approval: "write",
+		loadMode: "essential",
 		parameters: z.object({ strict: strictField, root: rootField }),
 		async execute(_id, params, signal, _update, ctx) {
 			const input = params as { strict: boolean; root?: string };
@@ -1769,6 +1771,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 		label: "IPH Clear STOP Lock",
 		description: "Optionally repair only artifact pointers/next action, then revalidate and clear the iph STOP lock with an audit note",
 		approval: "write",
+		loadMode: "essential",
 		parameters: z.object({
 			recoveryNote: z.string().min(1),
 			stateArtifacts: z.array(z.string()).default(() => []).describe("STOP recovery assignments such as scope_lock=scope_lock.md"),
@@ -1792,6 +1795,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 		label: "IPH Register Exploration",
 		description: "Register an exploration artifact as permanently non-freezeable evidence",
 		approval: "write",
+		loadMode: "essential",
 		parameters: z.object({ path: z.string().min(1), description: z.string().min(1), root: rootField }),
 		async execute(_id, params, signal, _update, ctx) {
 			const input = params as { path: string; description: string; root?: string };
@@ -1811,6 +1815,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 		label: "IPH Handover",
 		description: "Generate the machine-grounded iph handover report",
 		approval: "read",
+		loadMode: "essential",
 		parameters: z.object({ root: rootField }),
 		async execute(_id, params, signal, _update, ctx) {
 			const input = params as { root?: string };
