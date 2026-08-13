@@ -143,7 +143,7 @@ describe("M3 control-plane routing", () => {
 		expect(auditSystemTopology()).toEqual([]);
 	});
 
-	test("requires strong specialists only at scientific judgment gates", () => {
+	test("requires independent specialist peers only at scientific judgment gates", () => {
 		expect(requiredSpecialistForTarget("SCOPE_LOCK")).toBeUndefined();
 		expect(requiredSpecialistForTarget("RECENT_FRONTIER")).toBe("frontier-auditor");
 		expect(requiredSpecialistForTarget("L1_FREEZE")).toBe("layer-adjudicator");

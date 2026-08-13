@@ -4,7 +4,16 @@
 
 ## 0.0.4 - 2026-08-14
 
-- 增加 23 节点/22 迁移的系统拓扑审计与 11 类故障注入矩阵，缺边、错向、专家路由
+- 将 M3 明确定义为全局综合与创新批判的责任主体，而不是弱调度器：确定性合同只限制
+  副作用，不限制思考空间；specialist 是独立对抗同伴，scaffold 改动需做能力激发消融。
+- 分离 gate closure 与开放探索预算：validator READY 后 specialist 先正式完成；超时 draft
+  可由新任务复核续接，但 stale identity 不可用于推进。
+- 修复 specialist completion 竞态：PASS 消息早于正式 `yield` 时，迁移门会等待正式
+  lifecycle completion；身份凭证同时绑定研究根与目标状态，不能跨项目或跨节点复用。
+- 系统矩阵增加 Agent-native 工程合同和 Python/TypeScript 状态集合交叉校验，防止双实现漂移。
+- 收紧 frontier-auditor 语义合同：false-first 不等于 JSON 排序，OCCUPIES 是最强负面；
+  specialist FAIL 必须引用权威规则、schema 字段或 validator issue，不能临时创造门禁。
+- 增加 23 节点/22 迁移的系统拓扑审计与 13 类故障注入矩阵，缺边、错向、专家路由
   漂移和 mutable artifact 错误冻结会在测试阶段失败。
 - 修复 `recent_frontier_complete=true` 时 state 时间窗未同步：权威 CLI 现在从本次
   登记的 literature registry 校验并原子同步 `recent_window`。
@@ -16,7 +25,7 @@
   缺失字段误判锁状态的问题。
 - 11 个 IPH 工具全部标记为 coordinator essential；修复扩展注册了 `iph_clear_lock`
   但 M3 实际工具面不可见的恢复死锁。
-- 权威 IPH 锁升级到 `636dde23fa637c13d7c305b76f0c5628b0348ebf`。
+- 权威 IPH 锁升级到 `f0839958f9b16338db3bc6e64fa1fcf5874d707a`。
 
 - M3 remains the default coordinator, while new `frontier` and `layer` roles route the two
   early scientific judgment gates to GPT-5.6-sol.

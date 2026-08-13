@@ -167,6 +167,13 @@ const SPECIALIST_TASK_AGENTS = new Set([
 	"iph-reviewer",
 ]);
 
+const AGENT_NATIVE_EXECUTION_POLICY = [
+	"Reason globally and challenge the plan when evidence warrants it; the deterministic target limits one transaction's side effects, not the coordinator's thinking.",
+	"Before specialist dispatch, distinguish gate-required work from optional exploration and set a resource envelope based on information gain, cost, and deadline.",
+	"Once required artifacts exist and the authoritative validator is READY, complete the gate task formally before optional exploration; do not spend the identity-bearing completion window on unrelated searches.",
+	"If optional evidence could materially change the verdict, stop safely with the exact open question and continue in a new bounded task; preserve drafts but never reuse a timed-out or stale specialist identity.",
+];
+
 const TRANSITION_FILES = [WORKFLOW_FILE, LIFECYCLE_FILE, STOP_LOCK_FILE, VALIDATION_LOG_FILE] as const;
 
 const TRANSITION_PLANS: Record<string, TransitionPlan> = {
@@ -1510,6 +1517,7 @@ function renderStateContext(state: WorkflowState, lifecycleStage?: unknown): str
 			immutable_artifacts: plan.immutableArtifacts,
 			forbidden: plan.forbidden,
 		} : null,
+		execution_policy: AGENT_NATIVE_EXECUTION_POLICY,
 	};
 	return [
 		"<iph-runtime-state>",
@@ -1643,7 +1651,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "iph_transition_plan",
 		label: "IPH Transition Plan",
-		description: "Return the deterministic next-state contract, required specialist, draft artifacts, pointers, immutable hashes, and forbidden actions without changing research state",
+		description: "Return the deterministic next-state contract, specialist, artifacts, forbidden actions, and Agent-native execution policy without changing research state",
 		approval: "read",
 		loadMode: "essential",
 		parameters: z.object({ root: rootField }),
@@ -1687,6 +1695,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 					blockedReasons: state.blocked_reasons,
 					nextRequiredAction: state.next_required_action,
 					...plan,
+					executionPolicy: AGENT_NATIVE_EXECUTION_POLICY,
 					specialistDispatch: plan.specialist ? {
 						tool: "task",
 						agent: plan.specialist,
@@ -1695,6 +1704,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 						completion: "Wait for the task to complete and pass its exact agent ID as specialistAgentId.",
 					} : null,
 					rules: [
+						...AGENT_NATIVE_EXECUTION_POLICY,
 						"Draft and validate before iph_advance.",
 						"Pass specialistAgentId when specialist is present.",
 						"Mutable pointer artifacts must not be included as immutableArtifacts.",
@@ -2123,8 +2133,8 @@ export default function iphExtension(pi: ExtensionAPI) {
 		const statePath = path.join(root, WORKFLOW_FILE);
 		if (!existsSync(statePath)) return;
 		// STOP/BLOCKED means an operator decision or a specific recovery is required.
-		// Auto-continuing here counteracts the user's turn boundary and causes weak
-		// coordinators to repeat validate/clear-lock forever.
+		// Auto-continuing here counteracts the user's turn boundary and can make any
+		// coordinator repeat validate/clear-lock against an unchanged machine state.
 		if (existsSync(path.join(root, STOP_LOCK_FILE))) return;
 		const result = await runIph(root, "validate", ["--strict-new-checks"], event.signal);
 		if (result.exitCode === 0) {

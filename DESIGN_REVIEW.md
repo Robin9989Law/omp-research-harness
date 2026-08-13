@@ -1,7 +1,7 @@
 # V0.0.4 设计评审结论
 
 结论：通过。实现基线以 2026-08-14 的
-`Robin9989Law/innovation-proposition-hunting@636dde23fa637c13d7c305b76f0c5628b0348ebf`
+`Robin9989Law/innovation-proposition-hunting@f0839958f9b16338db3bc6e64fa1fcf5874d707a`
 和 OMP 17.x（真实联调 17.3.0）为准。
 
 ## 已关闭问题
@@ -24,6 +24,9 @@
    防止两个文件同时异常时出现恢复死锁。
 7. session 位于研究子目录时向上选择最近的 `workflow_state.json`；工具、hook、快照、
    lifecycle 和 session-stop 均使用同一研究根，避免 cwd 漂移形成第二份状态。
+8. M3 不是被降格的弱调度器。单步合同只限制一次事务的副作用，不限制跨节点理解、创新批判、
+   机会成本比较或对 specialist 的质疑；specialist 是独立对抗同伴，validator 是机器事实裁判。
+   scaffold 变更必须通过能力激发消融，证明其提高可靠性且没有压制主 Agent 的全局推理。
 
 ## 验收条件
 

@@ -3,6 +3,7 @@ import * as path from "node:path";
 import {
 	auditSystemTopology,
 	POSITIVE_STATE_SEQUENCE,
+	resolveSkillDir,
 	transitionPlanForState,
 } from "../extensions/iph";
 
@@ -31,6 +32,14 @@ for (const [agent, role] of Object.entries(expectedAgents)) {
 	assert(contents.includes(`model: "@${role}"`), `${agent} is not routed through @${role}`);
 	assert(typeof roles[role] === "string" && roles[role]!.length > 0, `model role ${role} is missing`);
 }
+const frontierAgent = await readFile(path.join(root, "agents", "frontier-auditor.md"), "utf8");
+assert(frontierAgent.includes("does not impose array ordering"), "frontier auditor lacks the false-first semantic boundary");
+assert(frontierAgent.includes("FAIL must cite an exact authoritative rule"), "frontier auditor may invent uncited failure constraints");
+assert(frontierAgent.includes("independent adversarial peer"), "frontier auditor is not framed as an independent peer");
+assert(frontierAgent.includes("Separate gate closure from open-ended exploration"), "frontier auditor lacks bounded completion semantics");
+const agentNativeContract = await readFile(path.join(root, "AGENT_NATIVE_ENGINEERING.md"), "utf8");
+assert(agentNativeContract.includes("最大化主 Agent 能力"), "agent-native contract suppresses M3 capability");
+assert(agentNativeContract.includes("约束的是副作用，不是思考空间"), "agent-native contract confuses reasoning with side-effect control");
 assert(roles.default?.includes("MiniMax-M3"), "default coordinator must remain MiniMax-M3");
 assert(roles.commit === roles.default, "commit and coordinator must share the M3 selector");
 
@@ -38,6 +47,27 @@ const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "
 assert(packageJson.version === packageJson.omp?.version, "package and OMP versions drifted");
 const skillLock = JSON.parse(await readFile(path.join(root, "config", "iph-lock.json"), "utf8"));
 assert(/^[0-9a-f]{40}$/.test(skillLock.commit), "authoritative skill commit is not pinned");
+
+const skillDir = resolveSkillDir();
+assert(skillDir, "authoritative skill checkout is not discoverable");
+const stateProbe = Bun.spawn([
+	process.env.IPH_PYTHON || "python3",
+	"-c",
+	"import json,sys; sys.path.insert(0,sys.argv[1]); import validate_workflow_state as v; print(json.dumps(sorted(v.STATES)))",
+	path.join(skillDir, "scripts"),
+], { stdout: "pipe", stderr: "pipe" });
+const [stateProbeExit, stateProbeOut, stateProbeError] = await Promise.all([
+	stateProbe.exited,
+	new Response(stateProbe.stdout).text(),
+	new Response(stateProbe.stderr).text(),
+]);
+assert(stateProbeExit === 0, `cannot read authoritative Python states: ${stateProbeError.trim()}`);
+const authoritativeStates = JSON.parse(stateProbeOut) as string[];
+const harnessStates = [...POSITIVE_STATE_SEQUENCE, "BLOCKED"].sort();
+assert(
+	JSON.stringify(authoritativeStates) === JSON.stringify(harnessStates),
+	`Python/TypeScript state drift: python=${JSON.stringify(authoritativeStates)} harness=${JSON.stringify(harnessStates)}`,
+);
 
 let specialistEdges = 0;
 for (let index = 0; index < POSITIVE_STATE_SEQUENCE.length - 1; index += 1) {
@@ -62,6 +92,6 @@ assert(
 );
 process.stdout.write(
 	`system_matrix=READY nodes=${POSITIVE_STATE_SEQUENCE.length} transitions=${POSITIVE_STATE_SEQUENCE.length - 1} ` +
-	`specialist_edges=${specialistEdges} negative_terminals=2 failure_injections=11 package=${packageJson.version} ` +
+	`specialist_edges=${specialistEdges} negative_terminals=2 failure_injections=14 state_sources=python+typescript package=${packageJson.version} ` +
 	`skill=${skillLock.commit}\n`,
 );

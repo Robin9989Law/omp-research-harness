@@ -10,7 +10,8 @@
 
 1. **拓扑完整**：23 个正向状态节点、22 条正向迁移、N0-1/N0-2 负面终态、
    `BLOCKED → resume_state` 恢复覆盖完整；
-2. **控制完整**：每个强判断节点由指定角色/model 承接，M3 只做主流程；
+2. **认知与控制完整**：M3 负责全局综合、创新批判和动态重规划；指定 specialist 提供独立
+   领域审计，validator 独立裁决机器合同；
 3. **事务完整**：state、lifecycle、STOP lock、validation log 在失败时一起回滚；
 4. **证据完整**：gate、artifact pointer、不可变哈希和 next action 同步记账；
 5. **部署完整**：技能锁、用户配置、真实 OMP loader、安装、打包内容和 README 同步。
@@ -47,6 +48,9 @@
 | F9 | 未授权计算 | tool_call 前拦截 | compute preflight 测试 |
 | F10 | lifecycle、skill commit/hash 或安装中途漂移 | STOP 或事务回滚 | lock/install/package E2E |
 | F11 | 工具已注册但未挂到模型可见工具面 | 11 个 IPH 工具全部 essential | 真实 OMP loader 可见性断言 + M3 回合 |
+| F12 | specialist 先发 PASS 消息、正式 completion 尚未落地 | 身份门识别 started 并短暂等待正式 completion；凭证绑定 research root + target | lifecycle 竞态单测 + 真实 M3 单节点重放 |
+| F13 | specialist 从模糊术语创造不存在的 JSON 排序约束 | FAIL 必须引用精确规则/schema/issue；明确 false-first 与 OCCUPIES 极性 | agent 合同断言 + 真实 GPT-5.6-sol 失败轨迹 |
+| F14 | specialist 已产出 READY gate，却把正式 completion 时间用于无界可选检索 | gate closure 与 exploration 分离；超时身份不可复用，draft 可由新任务复核续接 | agent 合同断言 + 15 分钟真实超时轨迹 + 续接重放 |
 
 ## 4. 分层测试顺序
 
@@ -58,14 +62,34 @@ L1 单元：bun test + Python unittest/pytest
 L2 组件：真实 OMP loader/tool/hook E2E
 L3 恢复：STOP/BLOCKED/rollback 故障注入
 L4 部署：install transaction + package contents + plugin doctor
-L5 真实模型：M3 每回合只执行一个合同节点，强判断委派指定 specialist
+L5 真实模型：M3 可跨节点做全局推理，但每回合只提交一个合同事务；指定 specialist 独立复核
+L6 能力激发：对步骤脚本/目标不变量、原始上下文/状态投影、权威专家/对抗同伴做 scaffold 消融
 ```
 
-M3 每一步先 `iph_status`、再 `iph_transition_plan`；只能执行计划中的一个 target。
+M3 每一步先 `iph_status`、再 `iph_transition_plan`；可以分析全局路径、质疑计划和比较信息价值，
+但一次只能提交计划中的一个 target。
 同一 state hash + 同一失败码不得第二次调用 validate/clear-lock。失败时保存 session、
 state hash、STOP lock、validation log 和工具调用序列，回到对应层修复后再重放。
 
-## 5. 发布门
+L6 不把单次成功率当作唯一指标，还记录无效工具调用、token/时延、规则冲突发现率、可复用新洞见和
+validator 拒绝率。测试结果用于删除压制 M3 全局推理的冗余步骤，并保留能提高事实质量和副作用安全的
+最小 scaffold。
+
+## 5. 面向 Agent 用户的工程约束
+
+本产品的直接用户是 Agent。自然语言说明只是辅助界面，真正的产品合同必须满足：
+
+- 状态、锁、身份、完成度和下一动作均为机器可判定字段；
+- 已发送消息不等于任务完成，自报 ID 不等于运行时身份；
+- 每个节点只有一个目标、一个合同和一个合法恢复动作；
+- 错误必须包含已观察状态和可执行诊断，不能只给模糊失败；
+- 重复、提前、超时和乱序调用必须幂等或安全拒绝；
+- M3 负责全局综合、创新批判和行动选择；specialist 是独立对抗同伴，validator 负责事实裁决；
+- 系统约束副作用而不约束思考空间，不得用“便宜/弱模型”假设减少 M3 的判断责任；
+- gate closure 与开放探索使用不同预算；READY 后先正式完成，超时 draft 可续接但 stale identity 不可复用；
+- 每次真实模型测试保留调用序列、模型角色、agent ID、状态快照和工件哈希。
+
+## 6. 发布门
 
 - 技能仓库与 harness 工作区 clean；
 - 两仓本地提交均通过各自全量测试；

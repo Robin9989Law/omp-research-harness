@@ -23,6 +23,7 @@
     "scripts/manage-user-config.ts",
     "SYSTEM.md",
     "SYSTEM_TEST_MATRIX.md",
+    "AGENT_NATIVE_ENGINEERING.md",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
