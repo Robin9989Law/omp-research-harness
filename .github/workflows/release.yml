@@ -54,12 +54,10 @@ jobs:
           git -C "$RUNNER_TEMP/innovation-proposition-hunting" checkout --detach "$IPH_COMMIT"
           echo "IPH_SKILL_DIR=$RUNNER_TEMP/innovation-proposition-hunting" >> "$GITHUB_ENV"
 
-      - name: Bind package metadata to this provenance source
+      - name: Verify package metadata matches this provenance source
         env:
           EXPECTED_GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          npm pkg set repository.type=git repository.url="https://github.com/${GITHUB_REPOSITORY}"
-          bun scripts/check-package.ts
+        run: bun scripts/check-package.ts
 
       - name: Verify harness release tarball
         env:

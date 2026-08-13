@@ -119,8 +119,8 @@ OMP loader 和安装器。GitHub CI 会从固定 commit checkout 上游并运行
 
 实际发布只通过手动触发的 `release` workflow：默认 `dry_run=true`，显式关闭后仍需
 `npm-release` environment 审批，并拒绝覆盖 registry 中已存在的版本；workflow 使用
-npm trusted publishing/OIDC 附加 provenance，并在打包前把 `repository.url` 精确绑定到
-实际运行 workflow 的公开 GitHub 仓库。当前仓库不会因普通 push 或 tag 自动发布。
+npm trusted publishing/OIDC 附加 provenance，并在打包前验证 `repository.url` 与实际
+运行 workflow 的公开 GitHub 仓库精确一致。当前仓库不会因普通 push 或 tag 自动发布。
 
 npm 首次发布前还不存在 package，因而无法预先建立 trusted publisher：仅第一次在
 `npm-release` environment 临时配置具备 publish 权限的 granular `NPM_TOKEN`；发布后立即

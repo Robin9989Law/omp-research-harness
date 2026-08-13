@@ -6,6 +6,7 @@ import { createBootState, resolveSkillDir, verifySkillLock } from "../extensions
 const projectRoot = path.resolve(import.meta.dir, "..");
 const required = [
 	"SYSTEM.md",
+	"CHANGELOG.md",
 	"extensions/iph.ts",
 	"scripts/omp-e2e.ts",
 	"scripts/install-e2e.ts",
