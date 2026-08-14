@@ -413,6 +413,22 @@ npm run debug:omp -- -p \
 受管角色，以及 CI/release workflow 仍复制更旧的 commit。当前权威值为 lock commit `966f5ae...`、
 八个受管角色；workflow 以后直接读取 lock，不再维护第二份 commit。
 
+### 15.1 本轮实际发布结果
+
+- Research Harness `main` 已推送到 `ea98136e57a15e0f25b50c7add082ba45643bd3e`；
+- 权威 IPH `main` 已推送到 `966f5ae29e283e0510ff6967f2fbe755b0c06a49`；
+- 首次 GitHub release run 在检出 IPH 时失败，因为 lock commit 当时只存在于本地、尚未到权威远端；
+  npm publish 尚未开始，因此没有部分发布；
+- 推送上述 4 个权威 IPH 提交后，原工作流重试通过 package、450 项 IPH 回归和版本唯一性检查；
+- GitHub OIDC trusted publisher 已发布 `@prcbooboo/omp-research-harness@0.0.4`，`latest=0.0.4`；
+- registry repository 为 `git+https://github.com/Robin9989Law/omp-research-harness.git`；
+- npm integrity 为
+  `sha512-ny06Asxv+xdUaq9j2ivZz9cBFsFh8KTO19Cn+NsocFtbVBEU0zeAsrsG3eCdBAo1H+TNqKimIW722E3pmP+Ksw==`；
+- 成功的 Actions run：<https://github.com/Robin9989Law/omp-research-harness/actions/runs/31810465340>。
+
+这个失败进一步确认：发布可达性也是 lock 合同的一部分。以后升级 `config/iph-lock.json` 时，必须先确保
+目标 commit 已存在于权威远端，再允许 release workflow 进入 package/publish 阶段。
+
 ## 16. 尚未关闭的长期改进
 
 以下不是当前发布阻塞项，但应进入下一阶段可靠性工程：
