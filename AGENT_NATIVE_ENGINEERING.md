@@ -166,10 +166,10 @@ k = 相同目标的重复运行次数
 ## 6. 当前完成度与后续门槛
 
 当前已有确定性状态机、显式 STOP、事务回滚、运行时身份、模型角色路由、全拓扑审计、22 个源状态
-fixture、N0 负终态事务测试、Node 18–22 连续事务测试，以及此前真实 M3 的 Node 1–16 单步重放。
+fixture、N0 负终态事务测试、Node 18–22 连续事务测试，以及真实 M3 的 Node 1–22 分段单步重放。
 这里的“单步”限制的是一次事务的副作用范围，不限制 M3 在行动前跨节点理解全局、比较路径或批判
-specialist。当前受限执行环境在 provider 请求前阻断网络，因此 reviewer 控制面修复后的 Node 17 与
-Node 18–22 仍须在模型网络恢复后做真实 L5 重放。仍需持续补强：
+specialist。Node 17–22 另有同一研究根的连续真实流，Node 17/21 使用 DeepSeek V4 Pro，最终到
+`COMPLETE`。完整证据见 `docs/FULL_NODE_EVIDENCE_2026-08-14.md`。仍需持续补强：
 
 - 同一测试在多次采样、同义提示和故障强度下的 `R(k, ε, λ)` 报告；
 - 标准化的 trace intermediate representation，自动关联责任步骤与 harness 层；

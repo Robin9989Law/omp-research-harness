@@ -8,13 +8,13 @@
 
 当前可证状态：
 
-- 权威 IPH：470/470 `unittest` 通过；当前 Python 环境未安装 pytest，因此没有把 pytest 启动失败误报为产品失败；
-- Research Harness：46/46 Bun 测试、23 节点/22 迁移拓扑、30 类故障注入、真实 OMP loader、事务安装与 package check 均 READY；
+- 权威 IPH：450/450 `unittest` 通过；
+- Research Harness：当前 Bun/TypeScript/system/release 门、23 节点/22 迁移拓扑、30 类可执行故障注入及 2 类真实失败回放、真实 OMP loader、事务安装与 package check 均 READY；
 - fresh offline fixture：22/22 源状态通过权威 validator；五条 theory witness 命令真实执行并校验 exit/stdout/hash；
 - N0 终态：N0-1、N0-2 与 N0-3 HOLD 均落态成功，强行进入正向 claim freeze 被拒且 state 逐字节不变；
 - 晚期连续事务：Node 18–22 从 `DIRECTION_LOCK` 走到 `COMPLETE`，覆盖未授权计算拒绝、显式授权、S4、epoch+1、第二轮 runtime-bound review；
-- 真实模型历史证据：M3 已覆盖 Node 1–16，首次 Node 17 reviewer 正确发现伪 locator 与缺失 witness；此前也验证过 GPT-5.6-sol、DeepSeek V4 Pro/Flash 的角色路由；
-- 当前外部阻塞：修复后的 Node 17 真实重放在 provider 请求前被沙箱网络策略阻断，trace 为 0 token、0 tool call。因此 Node 17 修复后及 Node 18–22 不能声称“真实 M3 已复测”；
+- 真实模型证据：M3 已分段覆盖 Node 1–22；Node 17–22 另在同一研究根中连续执行，Node 17/21 由 DeepSeek V4 Pro 独立复核，最终到 `COMPLETE`；
+- 首次 Node 4 和 Node 6 运行分别暴露“前后向引用证据不足”和 `xd://iph_advance` 合法事务被父快照回滚，修复后均已用真实模型单节点复测；
 - 未执行 Git push、`npm publish` 或远程发布。
 
 ## 方法
@@ -62,8 +62,11 @@
 | reviewer 合法 seal 后仍在父 task 返回时消失 | 两层事务边界 | 父快照重新判定 runtime identity、同态 state、bundle/review hash 与 PASS/FAIL/STOP；只放行合法最小 delta |
 | pending review fixture 预置未来审计 | Fixture integrity | pending 状态删除未来/旧 review 文件；审计必须由当前 reviewer 新建 |
 | reviewer FAIL 被映射成 BLOCKED | Failure semantics | 实质 FAIL 保持 review state，落 INVALID+STOP+required remediation；只有能力不可用才用 BLOCKED_CAPABILITY |
+| 非 reviewer specialist 的实质 FAIL 无法形成可恢复闭环 | Failure semantics | 允许带规则、证据与 remediation 的同态 `iph_advance`，保留 gate/V-level，落不可变 failure artifact、INVALID 与 STOP；能力缺失才进入 BLOCKED |
 | theory witness 命令不存在但 matrix 假绿 | Verification | fixture 生成时逐项真实执行命令并比较 exit/stdout bytes/SHA-256 |
 | novelty audit 引用不存在的 Table 2 | Evidence authenticity | 改用官方 PDF `§1.1 Eq. (4)` 与 `§2.1 Theorem 1`，收窄为 matched-budget evaluation contract 边界 |
+| Node 4 声称完成引用图审计但缺少可复核查询 | Evidence completeness | 登记官方 PDF bibliography 的后向遍历，以及带日期、过滤条件和命中数的 OpenAlex 前向查询；GPT-5.6-sol 复核后通过 |
+| Node 6 的 L2 合法推进返回 READY 后状态仍回到 L1 | Transaction boundary | 识别精确白名单 `xd://iph_*` 为底层 IPH 事务，避免外层 `write` 快照回滚；任意其他 xd/write 仍受防火墙保护 |
 | 受限环境无法重新下载固定 PDF | Reproducibility | 支持 `IPH_FIXTURE_PDF_CACHE` 离线输入，但仍强制同一 pinned SHA-256 |
 
 ## M3 行为评估
@@ -117,20 +120,16 @@ DeepSeek V4 Flash 单次投影约数秒；在 3 个工作任务运行时准确�
 ### omp-research-harness
 
 本轮后续关键提交从 `e089e1d` 的全边 agent-runnable fixture，到 `cd9de73` 的 reviewer/最小读题范围、
-`744a07b` 的确定性恢复诊断。reviewer 父 task 边界、晚期连续 E2E、N0 终态 E2E 与本文档更新
-已于 `13763bc` 做本地里程碑提交。其后新增的 `test:models` 真实模型逐节点回放器及其 README/测试矩阵入口
-已通过 typecheck、dry-run 和全量 `bun run check`，但当前 Codex 沙箱又把 `.git` 设为只读，
-`git commit` 返回 `index.lock: Operation not permitted`；这一批新增修改不得虚报为已提交。
+`744a07b` 的确定性恢复诊断和 `13763bc` 的 reviewer 父 task、晚期连续 E2E 与 N0 终态闭环。
+`b956c3c` 增加 22 节点真实模型回放器；`037fc90` 分离 specialist 实质 FAIL 与 capability BLOCKED；
+`c47855b` 修复精确 `xd://iph_*` 动态桥的事务回滚。以上均为本地提交，尚未 push。
 
 ## 发布结论
 
-确定性本地门已满足，但真实模型最终门尚未满足：需要在模型网络恢复后用 `test:models`
-重新跑 Node 17–22，并保存 M3、reviewer 与 event manager 的正式 lifecycle/model trace。当前也尚有因
-`.git` 只读而无法提交的回放器及文档入口修改。
-因此本轮不 push、不发布 npm，也不声称“全部生产条件稳健”。恢复两项外部能力后，顺序必须是：
+定义内的本地系统门已经满足：确定性 22/22、真实模型 Node 1–22 分段覆盖、Node 17–22 连续到
+`COMPLETE`，并覆盖单任务、任务 lifecycle、混合事件流、1,101 条事件压力、STOP/BLOCKED/rollback、
+loader、安装与打包。证据索引见 `docs/FULL_NODE_EVIDENCE_2026-08-14.md`。
 
-1. 执行 `bun run test:models -- --fixture-root <fresh-root>`，在 fresh fixture 上真实重跑 Node 17；
-2. 由同一运行器逐边重跑 Node 18–22；
-3. 重跑单任务事件流与 1,101 条混合压力流，记录有/无 Flash 消融；
-4. `bun run check` + 两个新增事务 E2E；
-5. 本地 commit；用户实测通过后才考虑 push/npm。
+这证明当前版本在已定义状态空间与故障模型内可稳定运行，不等于声称对所有 provider、网络中断或未知
+用户输入具有普遍可靠性。遵照用户要求，本轮只做本地提交，不 push、不发布 npm；先等待真实用户项目
+回放，再决定是否扩大回归矩阵与发布。

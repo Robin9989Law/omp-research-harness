@@ -485,6 +485,7 @@ bun run check
 bun run test:nodes -- --pdf-cache /absolute/path/to/pinned-W-0001.pdf
 bun run test:models -- --fixture-root /tmp/iph-agent-node-fixtures-full.<id>
 bun run test:models -- --fixture-root /tmp/iph-agent-node-fixtures-full.<id> --all-nodes
+bun run test:models -- --fixture-root /tmp/iph-agent-node-fixtures-full.<id> --all-nodes --from-node 6 --to-node 6
 bun run release:check
 omp plugin link .
 omp plugin doctor @prcbooboo/omp-research-harness
@@ -507,6 +508,10 @@ Node 17–22。它使用隔离的临时 OMP runtime，自动批准工具请求�
 `--all-nodes` 从 matrix 的 22 个 fresh 源状态分别做真实单边回放，并断言每个节点真实调用
 `iph_status`、`iph_transition_plan`、`iph_advance`；科学门还必须留下认证 specialist session，
 review 门额外必须调用 `iph_review`。
+`--from-node N --to-node M` 可对闭区间分片或只重放受影响节点。日常提交不应串行重跑全部真实模型：
+先跑 `check` 与 `test:nodes`，再按改动范围选择真实节点；完整 22 节点只用于发布候选、模型/OMP 路由变化
+或定期验收。完整真实回放通常需要 1–3 小时，分片证据必须保留各自的 model/session/tool/state/validator
+记录并在验收时合并。
 
 ## 相关项目
 

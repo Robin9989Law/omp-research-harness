@@ -64,9 +64,11 @@
 | F25 | event-flow-manager 把自己的 Flash 身份外推给 layer-adjudicator，M3 再把错误身份写入 decision note | 模型身份从自由文本剥离；harness 直接读取认证 session 的 `model_change` 并自动记账，rationale 禁止自报模型；manager 只可标注自身模型 | session model-evidence 单测 + 真实 L2 错误归因轨迹 |
 | F26 | `npm pack --dry-run` 受用户 `~/.npm` 历史 root-owned 缓存污染而 EPERM | release/package E2E 使用一次性隔离 npm cache，结束后清理；不修改用户缓存，不建议 sudo | release-check 真实失败轨迹 + 隔离缓存重放 |
 | F27 | reviewer 在子任务内合法 `iph_review` 后，父 `task` 安全快照把 sealed state 当成越权修改回滚 | 父边界只接受同态 review state、runtime IDs、bundle hash、review hash 与 PASS/FAIL 语义全部一致的闭环；仅放行该 state 与唯一登记 JSON，其余变化照常回滚 | 真实 loader/hook E2E + Node 21 连续事务 E2E |
-| F28 | 把科学 FAIL 与 reviewer capability unavailable 混成同一失败 | 实质 FAIL 保持 review state/V2 或 V3，落 INVALID+STOP+required remediation；能力不可用禁止 seal，必须返回 `BLOCKED_CAPABILITY` 供 coordinator 提交 BLOCKED | PASS/FAIL/capability 三分支单测 + BLOCKED E2E |
+| F28 | 把科学 FAIL 与 capability unavailable 混成同一失败 | reviewer FAIL 保持 review state/V2 或 V3；其他 specialist FAIL 保持当前 gate/V-level；两者都落 INVALID+STOP+required remediation。只有能力不可用返回 `BLOCKED_CAPABILITY` 并由 coordinator 提交 BLOCKED | PASS/FAIL/capability 三分支单测 + same-state specialist FAIL smoke + BLOCKED E2E |
 | F29 | validator 只校验 witness 命令字段与历史 output/hash，命令本身不存在仍可假绿 | fixture 生成时真实执行五条 witness 命令，逐项核对命令、exit code、stderr、stdout bytes 与 SHA-256；近邻 locator 使用官方 PDF 的真实章节/公式/定理 | 22 源状态 fixture matrix + witness 命令执行 |
 | F30 | 受限环境无法联网重新下载固定论文，导致系统测试不可复现 | `IPH_FIXTURE_PDF_CACHE` 接受已验证的固定 PDF；无论在线下载或离线缓存都必须命中同一 pinned SHA-256 | fresh offline fixture generation + 22/22 validator replay |
+| F31 | frontier fixture 声称覆盖前后向引用，却没有可复核的 database/query/filter/date/hit count | fixture 登记官方 PDF bibliography 后向遍历与 OpenAlex 前向查询，并保存 observed result；frontier-auditor 独立复核 | Node 4 首次 substantive FAIL + 修复后 GPT-5.6-sol strict 0 |
+| F32 | OMP 用 `write(path=xd://iph_advance)` 动态桥调用 IPH 工具，防火墙只看外层 `write` 而回滚合法事务 | 只对白名单中的精确 `xd://iph_*` 识别为同一受信任事务；其他 xd/write 仍受快照保护；证据收集还原底层工具名 | bridge 解析单测 + Node 6 失败轨迹 + 修复后真实重放 |
 
 ## 4. 分层测试顺序
 
@@ -97,11 +99,21 @@ state hash、STOP lock、validation log 和工具调用序列，回到对应层�
 bun run test:nodes -- --pdf-cache <pinned-pdf>
 bun run test:models -- --fixture-root <fresh-root>
 bun run test:models -- --fixture-root <fresh-root> --all-nodes
+bun run test:models -- --fixture-root <fresh-root> --all-nodes --from-node N --to-node M
 ```
 
 它分别证明 22 个源状态都能被权威 validator 接受、N0-1/N0-2/N0-3 不会被强推为正结果、
 以及 Node 18–22 能从明确授权连续提交到 COMPLETE。`--all-nodes` 是 L5 真实模型的
 22 节点隔离单边回放；确定性与真实模型两层结果必须分开报告。
+
+真实模型采用分层预算，不把发布级认证放进每次提交：
+
+- 日常：`check` + `test:nodes`；
+- 节点实现、prompt 或合同变化：只跑受影响的 `N..M`；
+- reviewer/compute 控制面变化：默认连续跑 Node 17–22；
+- 模型路由、OMP lifecycle、插件装载或发布候选：完整 `--all-nodes`，允许按节点范围在独立 CI worker
+  分片并合并 evidence；
+- 首次失败保留为负证据，修复后从该节点重放，不从 Node 1 重做已经证明且未受影响的昂贵科学审计。
 
 L6 不把单次成功率当作唯一指标，还记录无效工具调用、token/时延、规则冲突发现率、可复用新洞见和
 validator 拒绝率。测试结果用于删除压制 M3 全局推理的冗余步骤，并保留能提高事实质量和副作用安全的
@@ -131,6 +143,7 @@ validator 拒绝率。测试结果用于删除压制 M3 全局推理的冗余步
 - README、CHANGELOG、lock commit/hash 与 package version 一致；
 - 用户明确实测前不执行 `npm publish`。Git push 与 npm 发布是两个独立动作。
 
-截至 2026-08-14 当前工作区：确定性门已通过；真实模型重放在当前受限执行环境中于 provider 请求前
-被网络策略阻断（0 token、0 tool call），因此不得把 Node 17 修复后与 Node 18–22 报告为“真实 M3 已复测”。
-恢复模型网络后必须从 fresh fixture 重跑 L5，才可关闭最终实测门。
+截至 2026-08-14：确定性 22/22 与真实模型 Node 1–22 分段证据均已通过；Node 17–22 另有同一研究根的
+连续回放，最终 `COMPLETE`。Node 4/6 的首次失败、根因、修复 commit 和重放证据均保留，详见
+`docs/FULL_NODE_EVIDENCE_2026-08-14.md`。这关闭的是已定义节点与故障矩阵，不扩大为“所有未来生产条件
+完全可靠”。用户实测前仍不 push、不执行 `npm publish`。

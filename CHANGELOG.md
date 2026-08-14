@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- 增加可分片的 22 节点真实模型回放器（`--from-node` / `--to-node`），并采用“日常确定性全量、
+  变更节点真实重放、发布前真实全量”的测试金字塔，避免每次提交耗费数小时。
+- specialist 的实质 FAIL 与能力不可用分流：前者保留当前 gate/V-level 并提交不可变 failure、
+  `INVALID+STOP` 与精确 remediation；后者才进入 `BLOCKED_CAPABILITY`。
+- 修复 OMP `write(path=xd://iph_advance)` 动态桥被父层快照回滚的问题；仅精确白名单
+  `xd://iph_*` 继承底层 IPH 事务边界，其他写入仍受防火墙保护。
+- frontier fixture 增加可复核的官方 PDF 后向引用与 OpenAlex 前向引用查询证据；真实 Node 4
+  首次 FAIL 与修复重放均被保留为回归证据。
+- 完成真实模型 Node 1–22 分段覆盖，并以同一研究根连续验证 Node 17–22 到 `COMPLETE`；
+  原始证据路径、哈希、失败—修复链统一登记在全节点证据索引中。
 - transition plan 现在明示目标态 contribution 合同和提交后的唯一相邻 target；`iph_advance`
   在任何写入前拒绝 L1/L2 贡献越层及跳态 `nextAction`。
 - 子代理实际模型身份只接受运行时 `resolvedModel` / `model_change`；`task` 无 model 参数是
