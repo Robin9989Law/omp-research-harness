@@ -50,6 +50,134 @@ function canonicalBundle(entries: JsonObject[]): string {
 }
 
 async function repairEpochOneFixture(root: string): Promise<string> {
+	const officialPage = "https://proceedings.mlr.press/v235/angelopoulos24a.html";
+	await writeFile(path.join(root, "literature_archive", "W-0001.txt"), [
+		"Official PMLR record snapshot.",
+		"",
+		"Online conformal prediction with decaying step sizes",
+		"Anastasios Nikolas Angelopoulos; Rina Barber; Stephen Bates",
+		"Proceedings of the 41st International Conference on Machine Learning, PMLR 235:1616-1630, 2024.",
+		"",
+		"The official abstract reports an online conformal method with decaying step sizes,",
+		"retrospective coverage for arbitrary sequences, and improved time-point behavior",
+		"under a stable distribution.",
+		"",
+		`Source: ${officialPage}`,
+		"",
+	].join("\n"));
+	const archivedSha = await fileSha(root, "literature_archive/W-0001.txt");
+	await writeJson(path.join(root, "near_neighbor_registry.json"), {
+		schema_version: "2.0",
+		current_year: 2026,
+		recent_window: {
+			start_year: 2024,
+			end_year: 2026,
+			status: "COMPLETE",
+			snapshot_mode: "NEW_SEARCH",
+			completed_at: "2026-08-14T00:00:00Z",
+			queries: [
+				{ database: "PMLR", query: "online conformal prediction decaying step sizes", filters: "2024-2026", hit_count: 1 },
+				{ database: "OpenReview", query: '"Online conformal prediction with decaying step sizes"', filters: "2024-2026", hit_count: 1 },
+			],
+		},
+		current_collision_round: 1,
+		peer_reviewed_published_count: 1,
+		search_mode: "SEARCH_OPEN",
+		records: [{
+			registry_id: "W-0001",
+			canonical_title: "Online conformal prediction with decaying step sizes",
+			authors: ["Anastasios Nikolas Angelopoulos", "Rina Barber", "Stephen Bates"],
+			year: 2024,
+			persistent_ids: { pmlr: "v235/angelopoulos24a" },
+			canonical_url: officialPage,
+			alternate_urls: ["https://openreview.net/forum?id=2XkRIijUKw"],
+			identity_status: "VERIFIED",
+			identity_verification_url: officialPage,
+			identity_verified_at: "2026-08-14T00:00:00Z",
+			search_phase: "RECENT_FRONTIER_PASS",
+			importance: "CRITICAL",
+			importance_history: [{ importance: "CRITICAL", at: "2026-08-14T00:00:00Z", reason: "direct online update-schedule near neighbor" }],
+			reclassifications: [],
+			publication_status: "PUBLISHED",
+			terminal_rejection_eligibility: "QUALIFIED",
+			publication_verification_url: officialPage,
+			peer_review_status: "PEER_REVIEWED_PUBLISHED",
+			peer_review_verification_url: officialPage,
+			download: {
+				status: "OFFICIAL_HTML_ARCHIVED",
+				source_url: officialPage,
+				local_path: "literature_archive/W-0001.txt",
+				sha256: archivedSha,
+				downloaded_at: "2026-08-14T00:00:00Z",
+				verified_against_metadata: true,
+				block_reason: "",
+			},
+			claim_extraction_status: "COMPLETE",
+		}],
+	});
+	await writeJson(path.join(root, "literature_claim_registry.json"), {
+		schema_version: "2.0",
+		current_collision_round: 1,
+		records: [{
+			claim_id: "LC-0001",
+			source_registry_id: "W-0001",
+			source_artifact_id: "ART-W-0001-OFFICIAL-PAGE",
+			source_artifact_kind: "FULL_ARTICLE_HTML",
+			claim_type: "ENABLES",
+			normalized_statement: "The 2024 method uses decaying step sizes for online conformal prediction and reports retrospective coverage for arbitrary sequences.",
+			source_excerpt: "",
+			locator: { section: "Abstract" },
+			conditions: ["online conformal prediction", "arbitrary sequences"],
+			scope: "reported properties of the registered 2024 method",
+			evidence_level: "E2",
+			proof_locator: "",
+			verification_status: "VERIFIED_OFFICIAL_HTML",
+			importance: "CRITICAL",
+			discovered_round: 1,
+			use_status: "USED",
+			used_by_output_claim_ids: ["OC-0001"],
+			used_in_collision_ids: [],
+			exclusion_reason: "",
+		}],
+	});
+	await writeJson(path.join(root, "frontier_coverage.json"), {
+		schema_version: "2.0",
+		axes: {
+			method_synonyms: ["online conformal prediction", "adaptive conformal inference"],
+			target_tasks: ["streaming prediction", "sequential uncertainty quantification"],
+			theory_terms: ["arbitrary-sequence coverage", "population quantile estimation"],
+			algorithm_structures: ["predict then observe then update", "decaying step size"],
+			author_continuations: [{
+				edge: "Conformal PID Control for Time Series Prediction (2023) -> Online conformal prediction with decaying step sizes (2024)",
+				shared_authors: ["Anastasios Nikolas Angelopoulos"],
+			}],
+			backward_citations: ["Adaptive Conformal Inference Under Distribution Shift (NeurIPS 2021)"],
+			forward_citations: ["No forward-citation work was used as a qualifying identity in this bounded fixture audit."],
+			method_lineage: ["adaptive conformal inference -> conformal PID control -> decaying-step online conformal prediction"],
+		},
+		routes: [
+			{ route_id: "pmlr-title-search", route_type: "DISCOVERY", independent: true, details: "Exact-title and method-term search on the official PMLR proceedings index." },
+			{ route_id: "openreview-identity-check", route_type: "IDENTITY", independent: true, details: "Independent title/author/version check through the linked OpenReview record." },
+		],
+	});
+	await writeFile(path.join(root, "near_neighbor_url_ledger.csv"), "registry_id,canonical_url,identity_verification_url,publication_verification_url,peer_review_verification_url,status,checked_at,role\nW-0001,https://proceedings.mlr.press/v235/angelopoulos24a.html,https://proceedings.mlr.press/v235/angelopoulos24a.html,https://proceedings.mlr.press/v235/angelopoulos24a.html,https://proceedings.mlr.press/v235/angelopoulos24a.html,VERIFIED,2026-08-14T00:00:00Z,ALL\n");
+	await writeJson(path.join(root, "output_claim_support.json"), {
+		schema_version: "2.0",
+		current_collision_round: 1,
+		output_claims: [{
+			output_claim_id: "OC-0001",
+			statement: "The registered 2024 neighbor uses decaying step sizes for online conformal prediction and reports retrospective coverage for arbitrary sequences.",
+			output_location: "manuscript.md:9",
+			claim_kind: "FACT",
+			supporting_claim_ids: ["LC-0001"],
+			counter_claim_ids: [],
+			inference_type: "DIRECT",
+			reasoning: "The official registered article record directly states the method and reported coverage scope.",
+			caveats: "This is a literature fact, not proof of the candidate method's novelty or validity.",
+			trace_status: "VERIFIED",
+		}],
+		collision_gate: { prior_round_claims_drained: true, unused_prior_claim_ids: [], checked_at: "2026-08-14T00:00:00Z" },
+	});
 	const theoryPath = path.join(root, "theory_obligation_registry.json");
 	const theory = await readJson(theoryPath);
 	for (const obligation of theory.obligations ?? []) {
@@ -123,6 +251,52 @@ async function repairEpochOneFixture(root: string): Promise<string> {
 	};
 	await writeJson(auditPath, audit);
 	return manifest.claim_bundle_sha256;
+}
+
+async function applyLayeredEvidence(root: string, source: string): Promise<void> {
+	const sourceIndex = POSITIVE_STATE_SEQUENCE.indexOf(source as never);
+	const claimIndex = POSITIVE_STATE_SEQUENCE.indexOf("K_CLAIM_REGISTER" as never);
+	const collisionIndex = POSITIVE_STATE_SEQUENCE.indexOf("SYNTHESIZE_COLLISION" as never);
+	if (sourceIndex < claimIndex) {
+		await writeJson(path.join(root, "literature_claim_registry.json"), {
+			schema_version: "2.0",
+			current_collision_round: 1,
+			records: [],
+		});
+		const scope = await readJson(path.join(root, "current_evidence_scope.json"));
+		scope.atomic_claim_ids = [];
+		await writeJson(path.join(root, "current_evidence_scope.json"), scope);
+	}
+	if (sourceIndex < collisionIndex) {
+		await writeJson(path.join(root, "output_claim_support.json"), {
+			schema_version: "2.0",
+			current_collision_round: 1,
+			output_claims: [],
+			collision_gate: { prior_round_claims_drained: true, unused_prior_claim_ids: [], checked_at: "2026-08-14T00:00:00Z" },
+		});
+		if (sourceIndex >= claimIndex) {
+			const claims = await readJson(path.join(root, "literature_claim_registry.json"));
+			for (const claim of claims.records ?? []) {
+				claim.use_status = "UNUSED";
+				claim.used_by_output_claim_ids = [];
+			}
+			await writeJson(path.join(root, "literature_claim_registry.json"), claims);
+		}
+	}
+	if (sourceIndex < POSITIVE_STATE_SEQUENCE.indexOf("LAYER_DECISION" as never)) {
+		const registry = await readJson(path.join(root, "near_neighbor_registry.json"));
+		registry.records[0].download = {
+			status: "NOT_REQUIRED",
+			source_url: "https://proceedings.mlr.press/v235/angelopoulos24a.html",
+			local_path: "",
+			sha256: "",
+			downloaded_at: "",
+			verified_against_metadata: false,
+			block_reason: "L1/L2 metadata-and-abstract stage; K fulltext retrieval has not begun.",
+		};
+		registry.records[0].claim_extraction_status = "NOT_STARTED";
+		await writeJson(path.join(root, "near_neighbor_registry.json"), registry);
+	}
 }
 
 async function createEpochTwo(root: string): Promise<string> {
@@ -328,6 +502,7 @@ async function main(): Promise<void> {
 	for (const source of POSITIVE_STATE_SEQUENCE.slice(0, -1)) {
 		const caseRoot = path.join(outputRoot, source.toLowerCase());
 		await cp(template, caseRoot, { recursive: true });
+		await applyLayeredEvidence(caseRoot, source);
 		await writeJson(path.join(caseRoot, "workflow_state.json"), await stateFor(caseRoot, source, epochOneBundle, epochTwoBundle));
 		const lifecycle = lifecycleForSource(source);
 		assert(validateLifecycleState(lifecycle, lifecycle.active_stage).length === 0, `invalid lifecycle fixture: ${source}`);
