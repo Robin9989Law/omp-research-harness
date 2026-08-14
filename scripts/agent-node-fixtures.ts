@@ -139,6 +139,8 @@ async function repairEpochOneFixture(root: string): Promise<string> {
 			queries: [
 				{ database: "PMLR", query: "online conformal prediction decaying step sizes", filters: "2024-2026", hit_count: 1 },
 				{ database: "OpenReview", query: '"Online conformal prediction with decaying step sizes"', filters: "2024-2026", hit_count: 1 },
+				{ database: "Official PMLR PDF bibliography", query: 'reference-title:"Adaptive Conformal Inference Under Distribution Shift"', filters: "W-0001 bibliography; backward citations; checked 2026-08-14", hit_count: 1 },
+				{ database: "OpenAlex", query: "filter=cites:W4391555784", filters: "forward citations; snapshot 2026-08-14; all publication years", hit_count: 1 },
 			],
 		},
 		current_collision_round: 1,
@@ -213,12 +215,14 @@ async function repairEpochOneFixture(root: string): Promise<string> {
 				shared_authors: ["Anastasios Nikolas Angelopoulos"],
 			}],
 			backward_citations: ["Adaptive Conformal Inference Under Distribution Shift (NeurIPS 2021)"],
-			forward_citations: ["No forward-citation work was used as a qualifying identity in this bounded fixture audit."],
+			forward_citations: ["Quantifying the Uncertainty of Electric Vehicle Charging with Probabilistic Load Forecasting (2025; OpenAlex W4407404468; observed in the bounded forward-citation pass, not used as a qualifying near-neighbor identity)"],
 			method_lineage: ["adaptive conformal inference -> conformal PID control -> decaying-step online conformal prediction"],
 		},
 		routes: [
 			{ route_id: "pmlr-title-search", route_type: "DISCOVERY", independent: true, details: "Exact-title and method-term search on the official PMLR proceedings index." },
 			{ route_id: "openreview-identity-check", route_type: "IDENTITY", independent: true, details: "Independent title/author/version check through the linked OpenReview record." },
+			{ route_id: "pmlr-pdf-backward-citations", route_type: "BACKWARD_CITATION", independent: true, details: "Bounded W-0001 bibliography traversal on the pinned official PMLR PDF; query/filter/date/hit count are recorded in near_neighbor_registry.json." },
+			{ route_id: "openalex-forward-citations", route_type: "FORWARD_CITATION", independent: true, details: "Bounded OpenAlex cites:W4391555784 traversal at the 2026-08-14 snapshot; one observed work was recorded without qualifying it as a near-neighbor identity." },
 		],
 	});
 	await writeFile(path.join(root, "near_neighbor_url_ledger.csv"), "registry_id,canonical_url,identity_verification_url,publication_verification_url,peer_review_verification_url,status,checked_at,role\nW-0001,https://proceedings.mlr.press/v235/angelopoulos24a.html,https://proceedings.mlr.press/v235/angelopoulos24a.html,https://proceedings.mlr.press/v235/angelopoulos24a.html,https://proceedings.mlr.press/v235/angelopoulos24a.html,VERIFIED,2026-08-14T00:00:00Z,ALL\n");

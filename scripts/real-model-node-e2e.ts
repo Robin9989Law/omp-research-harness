@@ -127,6 +127,13 @@ assert(
 );
 const dryRun = process.argv.includes("--dry-run");
 const allNodes = process.argv.includes("--all-nodes");
+const fromNode = Number(option("--from-node") ?? (allNodes ? "1" : "17"));
+const toNode = Number(option("--to-node") ?? "22");
+assert(
+	Number.isInteger(fromNode) && Number.isInteger(toNode) && fromNode >= 1 && toNode <= 22 && fromNode <= toNode,
+	"--from-node/--to-node must select an inclusive range inside 1..22",
+);
+assert(allNodes || (fromNode >= 17 && toNode <= 22), "continuous late-node mode only supports nodes 17..22");
 const nodeMaxTime = option("--max-time") ?? "30m";
 const requestedRunRoot = option("--run-root");
 const runRoot = requestedRunRoot
@@ -184,6 +191,7 @@ const evidence: JsonObject = {
 	eventRole: modelRoles.event,
 	nodeMaxTime,
 	mode: allNodes ? "all-nodes-isolated" : "late-nodes-continuous",
+	nodeRange: { from: fromNode, to: toNode },
 	nodes: [],
 };
 
@@ -203,13 +211,12 @@ try {
 			const state = JSON.parse(await readFile(path.join(researchRoot, "workflow_state.json"), "utf8"));
 			assert(state.active_state === "INDEPENDENT_REVIEW", "dry-run fixture does not start at Node 17");
 		}
-		const nodeRange = allNodes ? "1-22" : "17-22";
+		const nodeRange = `${fromNode}-${toNode}`;
 		process.stdout.write(`real_model_node_e2e=DRY_RUN_READY nodes=${nodeRange} research_root=${researchRoot}\n`);
 		process.stdout.write(`next_command=bun scripts/real-model-node-e2e.ts --fixture-root ${fixtureRoot}${allNodes ? " --all-nodes" : ""}\n`);
 		process.exitCode = 0;
 	} else {
-		const firstNode = allNodes ? 1 : 17;
-		for (let node = firstNode; node <= 22; node += 1) {
+		for (let node = fromNode; node <= toNode; node += 1) {
 			const fixtureCase = fixtureCases[node - 1]!;
 			const expectedSource = String(fixtureCase.source ?? "");
 			const nodeResearchRoot = allNodes
@@ -325,8 +332,9 @@ try {
 		}
 		evidence.completedAt = new Date().toISOString();
 		await writeFile(path.join(runRoot, "evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
-		const nodeRange = allNodes ? "1-22" : "17-22";
-		process.stdout.write(`real_model_node_e2e=READY nodes=${nodeRange} final=COMPLETE evidence=${path.join(runRoot, "evidence.json")}\n`);
+		const nodeRange = `${fromNode}-${toNode}`;
+		const finalState = allNodes && toNode < 22 ? "PARTIAL_RANGE_COMPLETE" : "COMPLETE";
+		process.stdout.write(`real_model_node_e2e=READY nodes=${nodeRange} final=${finalState} evidence=${path.join(runRoot, "evidence.json")}\n`);
 	}
 } finally {
 	await rm(runtimeRoot, { recursive: true, force: true });

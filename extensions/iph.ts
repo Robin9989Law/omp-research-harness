@@ -453,7 +453,7 @@ export function nodeBriefing(
 			immutableArtifacts: plan.immutableArtifacts,
 			semanticInputs: targetSemanticInputs(plan.target),
 			failureClosure: {
-				substantiveFail: "Seal the reviewer-owned FAIL artifact with required_remediation; remain at the current gate, preserve V-level, and require INVALID+STOP with next_required_action set to that remediation.",
+				substantiveFail: "For iph-reviewer, seal its reviewer-owned FAIL through iph_review. For every other required specialist, call iph_advance with to=current active_state, specialistVerdict=FAIL, specialistRule, specialistEvidence, requiredRemediation, nextAction=requiredRemediation, and ACCEPTED disposition. Remain at the current gate, preserve V-level, and require INVALID+STOP.",
 				capabilityUnavailable: "Require a machine-readable BLOCKED_CAPABILITY result, preserve its task provenance, then commit BLOCKED+STOP with a concrete operator recovery action; do not disguise unavailable capability as a scientific FAIL.",
 			},
 		},
@@ -1005,6 +1005,42 @@ export function requiredSpecialistForTarget(target: string): TransitionPlan["spe
 }
 
 export type SpecialistDisposition = "ACCEPTED" | "OVERRIDDEN";
+
+export function specialistFailureInputIssue(
+	state: WorkflowState | undefined,
+	input: {
+		to?: string;
+		specialistAgentId?: string;
+		specialistDisposition?: SpecialistDisposition;
+		specialistRationale?: string;
+		specialistRule?: string;
+		specialistEvidence?: string;
+		requiredRemediation?: string;
+		nextAction?: string;
+		gates?: string[];
+		artifacts?: string[];
+		stateArtifacts?: string[];
+	},
+): string | undefined {
+	if (!state) return "workflow_state.json is unreadable";
+	const active = text(state.active_state);
+	const plan = transitionPlanForState(state);
+	if (!plan?.specialist || plan.specialist === REVIEWER_AGENT) {
+		return `${active || "(unknown state)"} has no non-reviewer specialist FAIL closure`;
+	}
+	if (input.to !== active) return `substantive specialist FAIL must remain at ${active}, not ${input.to || "(none)"}`;
+	if (!input.specialistAgentId?.trim()) return `substantive FAIL requires authenticated ${plan.specialist} specialistAgentId`;
+	if (input.specialistDisposition !== "ACCEPTED") return "substantive FAIL closure requires specialistDisposition=ACCEPTED; use the positive edge with OVERRIDDEN only when a rule-grounded override is justified";
+	if ((input.specialistRationale?.trim().length ?? 0) < 16) return "substantive FAIL requires a specialistRationale of at least 16 characters";
+	if ((input.specialistRule?.trim().length ?? 0) < 4) return "substantive FAIL requires an exact specialistRule";
+	if ((input.specialistEvidence?.trim().length ?? 0) < 16) return "substantive FAIL requires concrete specialistEvidence of at least 16 characters";
+	if ((input.requiredRemediation?.trim().length ?? 0) < 16) return "substantive FAIL requires requiredRemediation of at least 16 characters";
+	if (input.nextAction !== input.requiredRemediation) return "nextAction must exactly equal requiredRemediation for same-gate FAIL closure";
+	if ((input.gates?.length ?? 0) > 0 || (input.artifacts?.length ?? 0) > 0 || (input.stateArtifacts?.length ?? 0) > 0) {
+		return "same-gate FAIL closure cannot mutate gates, transition artifacts, or state artifact pointers";
+	}
+	return undefined;
+}
 
 export function specialistDispositionIssue(
 	requiredSpecialist: string | undefined,
@@ -1848,6 +1884,10 @@ function isLifecycleTarget(relative: string): boolean {
 	return relative === LIFECYCLE_FILE || relative.endsWith(`/${LIFECYCLE_FILE}`);
 }
 
+function isControlJournalTarget(relative: string): boolean {
+	return [VALIDATION_LOG_FILE, STOP_LOCK_FILE].some(file => relative === file || relative.endsWith(`/${file}`));
+}
+
 function isReviewTarget(relative: string): boolean {
 	return (
 		relative === "independent_audit.json" ||
@@ -1875,6 +1915,134 @@ function bashMutatesNamedFile(command: string, fileName: string): boolean {
 
 function blockedResult(root: string, message: string): IphRunResult {
 	return { status: "BLOCKED", exitCode: 2, stdout: "", stderr: message, root };
+}
+
+export async function sealSpecialistFailure(
+	root: string,
+	input: {
+		to: string;
+		note: string;
+		nextAction: string;
+		gates: string[];
+		artifacts: string[];
+		stateArtifacts?: string[];
+		specialistAgentId: string;
+		specialistDisposition: SpecialistDisposition;
+		specialistRationale: string;
+		specialistRule: string;
+		specialistEvidence: string;
+		requiredRemediation: string;
+		strict: boolean;
+	},
+	signal?: AbortSignal,
+): Promise<IphRunResult> {
+	const state = await readWorkflow(root);
+	const issue = specialistFailureInputIssue(state, input);
+	if (issue) return blockedResult(root, issue);
+	const active = text(state!.active_state);
+	const plan = transitionPlanForState(state)!;
+	const specialist = plan.specialist!;
+	const completion = await waitForSpecialistCompletion(
+		input.specialistAgentId,
+		specialist,
+		root,
+		plan.target,
+		signal,
+	);
+	if (!completion.completed) {
+		return blockedResult(root, `same-gate FAIL requires authenticated ${specialist} completion: ${completion.diagnosis}`);
+	}
+	const prevalidated = await runIph(root, "validate", input.strict ? ["--strict-new-checks"] : [], signal);
+	if (prevalidated.exitCode !== 0) return prevalidated;
+
+	const transaction = await captureFileTransaction(root).catch(() => undefined);
+	if (!transaction) return blockedResult(root, "cannot establish the specialist FAIL transaction");
+	const now = new Date().toISOString();
+	const safeState = active.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+	const failureRelative = `specialist_failures/${safeState}-${now.replace(/[:.]/g, "-")}-${randomUUID()}.json`;
+	const failurePath = path.join(root, failureRelative);
+	try {
+		const modelEvidence = await specialistRuntimeModelEvidence(input.specialistAgentId, specialist, root, plan.target);
+		const failure = {
+			schema_version: "1.0",
+			workflow_id: state!.workflow_id,
+			gate: active,
+			intended_target: plan.target,
+			verdict: "FAIL",
+			capability_available: true,
+			specialist,
+			specialist_agent_id: input.specialistAgentId,
+			runtime_model: modelEvidence?.model ?? "UNKNOWN",
+			resolved_model_is_fallback: modelEvidence?.resolvedModelIsFallback ?? null,
+			disposition: input.specialistDisposition,
+			rule: input.specialistRule.trim(),
+			evidence: input.specialistEvidence.trim(),
+			required_remediation: input.requiredRemediation.trim(),
+			coordinator_rationale: input.specialistRationale.trim(),
+			sealed_at: now,
+		};
+		await atomicWriteJson(failurePath, failure);
+		const failureHash = createHash("sha256").update(await readFile(failurePath)).digest("hex");
+		const decisionLog = Array.isArray(state!.decision_log) ? [...state!.decision_log] : [];
+		decisionLog.push({
+			at: now,
+			state: active,
+			action: `SPECIALIST_FAIL sealed without state advance: ${input.note.trim()}`,
+			artifacts: [{ path: failureRelative, sha256: failureHash }],
+		});
+		state!.decision_log = decisionLog;
+		state!.next_required_action = input.requiredRemediation.trim();
+		state!.updated_at = now;
+		await atomicWriteJson(path.join(root, WORKFLOW_FILE), state);
+
+		const priorLog = await readFile(path.join(root, VALIDATION_LOG_FILE), "utf8").catch(() => "");
+		await atomicWriteBytes(
+			path.join(root, VALIDATION_LOG_FILE),
+			Buffer.from(`${priorLog}${priorLog && !priorLog.endsWith("\n") ? "\n" : ""}${now} SPECIALIST_FAIL gate=${active} target=${plan.target} specialist=${specialist} agent=${input.specialistAgentId} rule=${JSON.stringify(input.specialistRule.trim())} evidence=${JSON.stringify(input.specialistEvidence.trim())} remediation=${JSON.stringify(input.requiredRemediation.trim())} artifact=${failureRelative} sha256=${failureHash}\n`),
+		);
+		const stateBytes = await readFile(path.join(root, WORKFLOW_FILE));
+		await atomicWriteJson(path.join(root, STOP_LOCK_FILE), {
+			exit_code: 1,
+			at: now,
+			state_sha256: createHash("sha256").update(stateBytes).digest("hex"),
+			active_state: active,
+			effective_state: active,
+			next_required_action: input.requiredRemediation.trim(),
+			failing: [`SPECIALIST_VERDICT_FAIL:${specialist}`],
+			specialist_failure_artifact: failureRelative,
+		});
+		const sealed = await runIph(root, "validate", input.strict ? ["--strict-new-checks"] : [], signal);
+		if (sealed.exitCode !== 1 || !existsSync(path.join(root, STOP_LOCK_FILE))) {
+			await restoreFileTransaction(transaction);
+			await rm(failurePath, { force: true });
+			return {
+				status: "ERROR",
+				exitCode: 70,
+				stdout: "",
+				stderr: `specialist FAIL transaction expected exit 1 with STOP lock, observed ${sealed.exitCode}; transaction rolled back`,
+				root,
+			};
+		}
+		return {
+			...sealed,
+			stdout: [
+				`EXPECTED_SPECIALIST_FAIL_COMMIT preserved ${active}/${text(state!.validity_level)} with STOP`,
+				`specialist=${specialist}; agent=${input.specialistAgentId}; artifact=${failureRelative}`,
+				`recovery=${input.requiredRemediation.trim()}`,
+				sealed.stdout.trim(),
+			].filter(Boolean).join("\n"),
+		};
+	} catch (error) {
+		await restoreFileTransaction(transaction).catch(() => undefined);
+		await rm(failurePath, { force: true }).catch(() => undefined);
+		return {
+			status: "ERROR",
+			exitCode: 70,
+			stdout: "",
+			stderr: error instanceof Error ? error.message : String(error),
+			root,
+		};
+	}
 }
 
 function auditAnswersAreSubstantive(audit: Record<string, unknown>): boolean {
@@ -2307,7 +2475,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "iph_advance",
 		label: "IPH Advance",
-		description: "Validate, then atomically write state artifact pointers, immutable hashes, gates, next action, and the state transition",
+		description: "Validate and atomically close one edge; a substantive non-reviewer specialist FAIL uses to=current plus specialistVerdict=FAIL and remains same-state with INVALID+STOP",
 		approval: "write",
 		loadMode: "essential",
 		parameters: z.object({
@@ -2332,6 +2500,10 @@ export default function iphExtension(pi: ExtensionAPI) {
 			specialistAgentId: z.string().min(1).optional().describe("Completed OMP task agent ID required for frontier, layer, atomic-claim, and collision gates"),
 			specialistDisposition: z.enum(["ACCEPTED", "OVERRIDDEN"]).optional().describe("Required at specialist gates: accept the peer conclusion or explicitly override it"),
 			specialistRationale: z.string().min(1).optional().describe("Required at specialist gates: evidence, contract rule, or validator basis for the disposition"),
+			specialistVerdict: z.literal("FAIL").optional().describe("Substantive non-reviewer specialist FAIL: preserve the current state and V-level with INVALID+STOP"),
+			specialistRule: z.string().min(1).optional().describe("Exact authoritative rule or validator issue cited by the specialist FAIL"),
+			specialistEvidence: z.string().min(1).optional().describe("Concrete observed evidence supporting the specialist FAIL"),
+			requiredRemediation: z.string().min(1).optional().describe("Exact repair action; must equal nextAction for same-gate FAIL"),
 			strict: strictField,
 			root: rootField,
 		}),
@@ -2352,11 +2524,32 @@ export default function iphExtension(pi: ExtensionAPI) {
 				specialistAgentId?: string;
 				specialistDisposition?: SpecialistDisposition;
 				specialistRationale?: string;
+				specialistVerdict?: "FAIL";
+				specialistRule?: string;
+				specialistEvidence?: string;
+				requiredRemediation?: string;
 				strict: boolean;
 				root?: string;
 			};
 			const root = resolveResearchRoot(ctx.cwd, input.root);
 			const currentState = await readWorkflow(root);
+			if (input.specialistVerdict === "FAIL") {
+				return toolResult(await sealSpecialistFailure(root, {
+					to: input.to,
+					note: input.note,
+					nextAction: input.nextAction,
+					gates: input.gates,
+					artifacts: input.artifacts,
+					stateArtifacts: input.stateArtifacts,
+					specialistAgentId: input.specialistAgentId ?? "",
+					specialistDisposition: input.specialistDisposition ?? "OVERRIDDEN",
+					specialistRationale: input.specialistRationale ?? "",
+					specialistRule: input.specialistRule ?? "",
+					specialistEvidence: input.specialistEvidence ?? "",
+					requiredRemediation: input.requiredRemediation ?? "",
+					strict: input.strict,
+				}, signal));
+			}
 			const targetIssue = transitionTargetIssue(currentState, input.to);
 			if (targetIssue) {
 				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${targetIssue}`));
@@ -2674,6 +2867,9 @@ export default function iphExtension(pi: ExtensionAPI) {
 				if (isLifecycleTarget(relative)) {
 					return { block: true, reason: "Direct lifecycle_state.json mutation is forbidden while it is valid; use an iph_* tool." };
 				}
+				if (isControlJournalTarget(relative)) {
+					return { block: true, reason: `Direct ${relative} mutation is forbidden; validation journals and STOP locks are owned by iph_* tools.` };
+				}
 				if (frozen.has(relative)) {
 					return {
 						block: true,
@@ -2702,6 +2898,9 @@ export default function iphExtension(pi: ExtensionAPI) {
 			}
 			if (bashMutatesNamedFile(command, LIFECYCLE_FILE)) {
 				return { block: true, reason: "Shell mutation of lifecycle_state.json is forbidden; use iph_validate to rebuild it." };
+			}
+			if (bashMutatesNamedFile(command, VALIDATION_LOG_FILE) || bashMutatesNamedFile(command, STOP_LOCK_FILE)) {
+				return { block: true, reason: "Shell mutation of validation.log or .workflow_stop.lock is forbidden; use the corresponding iph_* closure or recovery tool." };
 			}
 			if (
 				(bashMutatesNamedFile(command, "independent_audit.json") || bashMutatesNamedFile(command, REVIEW_DIR)) &&

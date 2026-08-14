@@ -31,6 +31,7 @@ import {
 	sealRuntimeReview,
 	shouldContinueSessionStop,
 	specialistDispositionIssue,
+	specialistFailureInputIssue,
 	specialistRuntimeModelEvidence,
 	transitionPlanForState,
 	transitionArtifactScopeIssue,
@@ -105,6 +106,7 @@ describe("M3 control-plane routing", () => {
 		expect(briefing.examples.invalid).toContain("atomic/full-text claim");
 		expect(briefing.completionProof.join(" ")).toContain("formally completed");
 		expect(briefing.outputContract.failureClosure.substantiveFail).toContain("INVALID+STOP");
+		expect(briefing.outputContract.failureClosure.substantiveFail).toContain("specialistVerdict=FAIL");
 		expect(briefing.outputContract.failureClosure.capabilityUnavailable).toContain("BLOCKED+STOP");
 		expect(briefing.completionProof.join(" ").toLowerCase()).toContain("narration alone is not completion");
 	});
@@ -204,6 +206,28 @@ describe("M3 control-plane routing", () => {
 			"The evidence is complete; runtime model was deepseek-v4-flash.",
 		)).toContain("must not assert runtime model identity");
 		expect(specialistDispositionIssue(undefined, undefined, undefined, undefined)).toBeUndefined();
+	});
+
+	test("constructs same-gate specialist FAIL separately from capability BLOCKED", () => {
+		const state = { active_state: "RECENT_FRONTIER" } as never;
+		const valid = {
+			to: "RECENT_FRONTIER",
+			specialistAgentId: "FrontierAuditNode04",
+			specialistDisposition: "ACCEPTED" as const,
+			specialistRationale: "The exact frontier rule is violated by the recorded query ledger.",
+			specialistRule: "R-FRONTIER-11",
+			specialistEvidence: "No executed forward-citation route is recorded in frontier_coverage.json.",
+			requiredRemediation: "Run and record the bounded forward-citation traversal, then request a fresh audit.",
+			nextAction: "Run and record the bounded forward-citation traversal, then request a fresh audit.",
+			gates: [],
+			artifacts: [],
+			stateArtifacts: [],
+		};
+		expect(specialistFailureInputIssue(state, valid)).toBeUndefined();
+		expect(specialistFailureInputIssue(state, { ...valid, to: "BLOCKED" })).toContain("must remain");
+		expect(specialistFailureInputIssue(state, { ...valid, specialistDisposition: "OVERRIDDEN" })).toContain("ACCEPTED");
+		expect(specialistFailureInputIssue(state, { ...valid, gates: ["literature_registry_valid=false"] })).toContain("cannot mutate gates");
+		expect(specialistFailureInputIssue({ active_state: "INDEPENDENT_REVIEW" } as never, valid)).toContain("no non-reviewer specialist");
 	});
 
 	test("reads specialist model identity from its authenticated session rather than free text", async () => {
