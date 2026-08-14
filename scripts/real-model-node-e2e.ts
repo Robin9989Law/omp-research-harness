@@ -71,9 +71,10 @@ const EDGE_TARGETS: Record<string, string> = {
 const fixtureRoot = path.resolve(option("--fixture-root") ?? "");
 assert(
 	fixtureRoot && await exists(path.join(fixtureRoot, "independent_review", "workflow_state.json")),
-	"usage: bun scripts/real-model-node-e2e.ts --fixture-root <fresh-fixture-root> [--run-root <new-directory>] [--dry-run]",
+	"usage: bun scripts/real-model-node-e2e.ts --fixture-root <fresh-fixture-root> [--run-root <new-directory>] [--max-time 30m] [--dry-run]",
 );
 const dryRun = process.argv.includes("--dry-run");
+const nodeMaxTime = option("--max-time") ?? "30m";
 const requestedRunRoot = option("--run-root");
 const runRoot = requestedRunRoot
 	? path.resolve(requestedRunRoot)
@@ -84,8 +85,10 @@ if (requestedRunRoot) {
 }
 const researchRoot = path.join(runRoot, "research");
 const logsRoot = path.join(runRoot, "logs");
+const sessionsEvidenceRoot = path.join(runRoot, "sessions");
 await cp(path.join(fixtureRoot, "independent_review"), researchRoot, { recursive: true });
 await mkdir(logsRoot, { recursive: true });
+await mkdir(sessionsEvidenceRoot, { recursive: true });
 
 const skillDir = resolveSkillDir();
 assert(skillDir, "authoritative IPH skill checkout is unavailable");
@@ -120,12 +123,14 @@ const evidence: JsonObject = {
 	coordinatorModel: modelRoles.default,
 	reviewerRole: modelRoles.review,
 	eventRole: modelRoles.event,
+	nodeMaxTime,
 	nodes: [],
 };
 
 const commonPrompt = [
 	"继续当前 IPH 工作流，只完成当前 active_state 的一条边。",
 	"先调用 iph_status 与 iph_transition_plan，逐项阅读 readBeforeAct、constraints、examples 和 completionProof，再做全局判断。",
+	"只读 transition plan 指定的必读文件，不自行扫描全项目，不重复执行已有 completionProof。",
 	"M3 负责主流程、机会成本和 specialist disposition；不要重建项目、清锁、跳态或提前执行下一节点。",
 	"plan 指定 specialist 时只派一个对应 task，不传 outputSchema/schemaMode；科学判断由 specialist 独立完成。",
 	"reviewer 只能新建 review_artifacts/*.json，并在其会话调用 iph_review。实质 FAIL 必须写 required_remediation 并形成同态 INVALID+STOP；能力不可用只返回 BLOCKED_CAPABILITY。",
@@ -163,7 +168,7 @@ try {
 				"--thinking", "high",
 				"--approval-mode", "yolo",
 				"--no-title",
-				"--max-time", "15m",
+				"--max-time", nodeMaxTime,
 				"-p",
 				`${commonPrompt}${authorization}`,
 			], {
@@ -185,6 +190,7 @@ try {
 			await writeFile(logPath, `${stdout}${stderr ? `\n[stderr]\n${stderr}` : ""}`);
 			const after = JSON.parse(await readFile(path.join(researchRoot, "workflow_state.json"), "utf8")) as JsonObject;
 			const traces = await modelChanges(runtimeRoot, startedAtMs);
+			await cp(runtimeSessions, sessionsEvidenceRoot, { recursive: true, force: true });
 			const stopLock = await exists(path.join(researchRoot, ".workflow_stop.lock"));
 			const validation = Bun.spawn([
 				"python3",

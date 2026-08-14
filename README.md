@@ -500,8 +500,9 @@ omp plugin doctor @prcbooboo/omp-research-harness
 
 `test:models` 从 fresh `independent_review` fixture 开始，每回合只让 M3 提交一条边，真实重放
 Node 17–22。它使用隔离的临时 OMP runtime，自动批准工具请求，逐节点保存输出、运行时
-`model_change`、state/STOP 和 strict validator 结果；临时认证数据库在结束时删除，最终只保留不含密钥的
-`evidence.json` 与日志。先用 `--dry-run` 检查输入，不会调用模型。
+`model_change`、session JSONL、state/STOP 和 strict validator 结果；临时认证数据库在结束时删除，
+保留的 session 证据不包含认证数据库。节点默认预算为 30 分钟，可用 `--max-time 45m` 调整。
+先用 `--dry-run` 检查输入，不会调用模型。
 
 ## 相关项目
 
