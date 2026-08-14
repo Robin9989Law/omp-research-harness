@@ -9,6 +9,8 @@ const required = [
 	"SYSTEM_TEST_MATRIX.md",
 	"AGENT_NATIVE_ENGINEERING.md",
 	"CHANGELOG.md",
+	".github/workflows/ci.yml",
+	".github/workflows/release.yml",
 	"extensions/iph.ts",
 	"scripts/omp-e2e.ts",
 	"scripts/install-e2e.ts",
@@ -34,6 +36,16 @@ const required = [
 for (const relative of required) {
 	const contents = await readFile(path.join(projectRoot, relative), "utf8");
 	if (!contents.trim()) throw new Error(`missing or empty delivery artifact: ${relative}`);
+}
+
+for (const relative of [".github/workflows/ci.yml", ".github/workflows/release.yml"]) {
+	const contents = await readFile(path.join(projectRoot, relative), "utf8");
+	if (!contents.includes('require("./config/iph-lock.json").commit')) {
+		throw new Error(`${relative} must derive the authoritative IPH commit from config/iph-lock.json`);
+	}
+	if (/IPH_COMMIT:\s*[0-9a-f]{40}/i.test(contents)) {
+		throw new Error(`${relative} must not duplicate a hard-coded authoritative IPH commit`);
+	}
 }
 
 const pkg = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8"));

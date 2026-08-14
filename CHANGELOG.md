@@ -4,6 +4,8 @@
 
 ## 0.0.4 - 2026-08-14
 
+- CI 与 release workflow 不再复制一份易漂移的 IPH commit；两者直接读取
+  `config/iph-lock.json`，package check 会拒绝重新引入硬编码锁。
 - 增加可分片的 22 节点真实模型回放器（`--from-node` / `--to-node`），并采用“日常确定性全量、
   变更节点真实重放、发布前真实全量”的测试金字塔，避免每次提交耗费数小时。
 - specialist 的实质 FAIL 与能力不可用分流：前者保留当前 gate/V-level 并提交不可变 failure、

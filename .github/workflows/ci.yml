@@ -26,9 +26,9 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Check out pinned authoritative IPH
-        env:
-          IPH_COMMIT: 636dde23fa637c13d7c305b76f0c5628b0348ebf
         run: |
+          IPH_COMMIT="$(node -p 'require("./config/iph-lock.json").commit')"
+          test -n "$IPH_COMMIT"
           git clone --filter=blob:none https://github.com/Robin9989Law/innovation-proposition-hunting.git "$RUNNER_TEMP/innovation-proposition-hunting"
           git -C "$RUNNER_TEMP/innovation-proposition-hunting" checkout --detach "$IPH_COMMIT"
           echo "IPH_SKILL_DIR=$RUNNER_TEMP/innovation-proposition-hunting" >> "$GITHUB_ENV"

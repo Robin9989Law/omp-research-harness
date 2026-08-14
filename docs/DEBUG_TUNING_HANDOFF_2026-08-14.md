@@ -245,6 +245,7 @@ STOP 期间禁止推进状态。修复唯一恢复动作后由受控工具清锁
 | Node 4 缺引用图证据 | 只声称覆盖，没有 query/filter/date/hit count | 补官方 bibliography 后向遍历与 OpenAlex 前向查询；GPT-5.6-sol 重审 |
 | Node 6 返回 READY 后状态回退 | `write(path=xd://iph_advance)` 被父防火墙当普通写入 | 精确白名单识别 `xd://iph_*` 底层事务，其他 write 仍保护 |
 | npm dry-run 被用户 cache 权限阻塞 | `~/.npm` 有历史 root-owned 文件 | release/package 使用自动清理的隔离 cache，不触碰用户缓存 |
+| CI/release 使用旧 IPH commit | workflow 复制了一份 lock 值，产品锁升级后发生双写漂移 | workflow 运行时直接读取 `config/iph-lock.json`；package check 拒绝硬编码 commit |
 
 完整 30 类可执行故障注入见 [SYSTEM_TEST_MATRIX.md](../SYSTEM_TEST_MATRIX.md)。详细过程见
 [DEBUG_RETROSPECTIVE_2026-08-14.md](DEBUG_RETROSPECTIVE_2026-08-14.md)。
@@ -408,8 +409,9 @@ npm run debug:omp -- -p \
 - 发布后重新查询 npm `latest`、版本、repository、dist integrity；
 - 不在命令、tracked `.npmrc`、日志或交接文档中记录 access token。
 
-本轮交接审计发现并修正了两处文档漂移：README 手动安装仍指向旧 IPH commit，以及两处仍写“七个”
-受管角色；当前权威值为 lock commit `966f5ae...` 和八个受管角色。
+本轮交接审计发现并修正了三类发布漂移：README 手动安装仍指向旧 IPH commit、两处仍写“七个”
+受管角色，以及 CI/release workflow 仍复制更旧的 commit。当前权威值为 lock commit `966f5ae...`、
+八个受管角色；workflow 以后直接读取 lock，不再维护第二份 commit。
 
 ## 16. 尚未关闭的长期改进
 
