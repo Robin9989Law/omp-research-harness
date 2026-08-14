@@ -31,7 +31,7 @@
   缺失字段误判锁状态的问题。
 - 12 个 IPH 工具全部标记为 coordinator essential；修复扩展注册了 `iph_clear_lock`
   但 M3 实际工具面不可见的恢复死锁。
-- 权威 IPH 锁升级到 `6a4a9cd567d68e919c932f784319d9f5b9fb0ac1`。
+- 权威 IPH 锁升级到 `1f7df5134683cc1e65d375da831bd64ec708a999`。
 
 - M3 remains the default coordinator, while new `frontier` and `layer` roles route the two
   early scientific judgment gates to GPT-5.6-sol.

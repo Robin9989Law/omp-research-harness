@@ -94,6 +94,6 @@ assert(
 );
 process.stdout.write(
 	`system_matrix=READY nodes=${POSITIVE_STATE_SEQUENCE.length} transitions=${POSITIVE_STATE_SEQUENCE.length - 1} ` +
-	`specialist_edges=${specialistEdges} negative_terminals=2 failure_injections=16 state_sources=python+typescript package=${packageJson.version} ` +
+	`specialist_edges=${specialistEdges} negative_terminals=2 failure_injections=17 state_sources=python+typescript package=${packageJson.version} ` +
 	`skill=${skillLock.commit}\n`,
 );

@@ -1,9 +1,9 @@
 {
   "schema_version": "1.0",
   "repository": "https://github.com/Robin9989Law/innovation-proposition-hunting",
-  "commit": "6a4a9cd567d68e919c932f784319d9f5b9fb0ac1",
+  "commit": "1f7df5134683cc1e65d375da831bd64ec708a999",
   "files": {
-    "SKILL.md": "5a5420095eae69f671079c9b64ac301e862e3ab50718186c9b465a9be164fa98",
+    "SKILL.md": "86e73831131297fb60a5c67a3e9e2e812ba968978ad0839ac50340d341ce56e3",
     "reference.md": "b3b0ce316c8a846f17edee98468b540fecc46e4de2ec7b7deed749d9b4d9e85b",
     "templates.md": "1f75aac88b03466ecb3b265a8811187ff106677b80bde15dd0bd1549775ade40",
     "evidence-pipeline.md": "87398c717bb6ddfbfb21bfb0d019028a1fc630ac032f29a59d6bc38d758a40ab",
@@ -28,7 +28,7 @@
     "scripts/validate_protocol_contract.py": "4d9cb5b2ed7017d008e43b9c5f499dbbb69b64e65451d8f8b2a741164fef12a1",
     "scripts/validate_schema_v2.py": "3cf8c4efc27e76cfb38b337009772adc5cdc7e9345de4c4bd36820685b1e6954",
     "scripts/validate_theory_obligations.py": "2155c20ac1b87cf365e8f15e890455575ed92ae6f10045a50d15849ef4ee269d",
-    "scripts/validate_workflow_state.py": "8e7cae80212d45f3d5a72d61b47cbd7121d8a1905adf7ba211a6c186c55a843a",
+    "scripts/validate_workflow_state.py": "74271ea3335d54b0d6bdde908faa21a2ca745ccbcd27625ac91adab356e4f311",
     "scripts/validation_common.py": "8f6c336fb2d903f0e77a9c60ca07f7c2549decdc9081ea5f070826f78578a5d4"
   }
 }

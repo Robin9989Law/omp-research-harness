@@ -53,6 +53,7 @@
 | F14 | specialist 已产出 READY gate，却把正式 completion 时间用于无界可选检索 | gate closure 与 exploration 分离；超时身份不可复用，draft 可由新任务复核续接 | agent 合同断言 + 15 分钟真实超时轨迹 + 续接重放 |
 | F15 | 为满足自造的 URL distinctness，把 arXiv 预印本写成同行评审证明 | URL 字段按证据角色校验；预印本域不得证明 `PEER_REVIEWED_*`；活动 ledger 使用版本化 state pointer | Python 正反测试 + 真实 M3 语义逃逸轨迹 |
 | F16 | specialist 已完成但结论与权威规则冲突 | 允许 M3 接受或推翻，但迁移必须记录 disposition 及证据/规则/validator 依据 | disposition 合同单测 + decision note 审计 |
+| F17 | 磁盘上存在 URL ledger，但已置真的 literature gate 没有活动指针 | validator 拒绝隐式文件名猜测；要求 `artifacts.url_ledger` 并用版本化修复工具原子切换 | workflow-state 单测 + 真实 M3 拒绝无根修复轨迹 |
 
 ## 4. 分层测试顺序
 
