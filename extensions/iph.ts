@@ -2304,16 +2304,16 @@ export default function iphExtension(pi: ExtensionAPI) {
 			if (targetIssue) {
 				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${targetIssue}`));
 			}
-			const artifactScopeIssue = transitionArtifactScopeIssue(currentState, input.to, input.artifacts);
-			if (artifactScopeIssue) {
-				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${artifactScopeIssue}`));
-			}
 			const mutableConflicts = mutableArtifactConflicts(input.artifacts, input.stateArtifacts ?? []);
 			if (mutableConflicts.length > 0) {
 				return toolResult(blockedResult(
 					root,
 					`mutable state pointer artifacts must not be frozen in decision_log: ${mutableConflicts.join(", ")}`,
 				));
+			}
+			const artifactScopeIssue = transitionArtifactScopeIssue(currentState, input.to, input.artifacts);
+			if (artifactScopeIssue) {
+				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${artifactScopeIssue}`));
 			}
 			const gateIssue = transitionGateIssue(input.to, input.gates, input.noveltyLevel);
 			if (gateIssue) {

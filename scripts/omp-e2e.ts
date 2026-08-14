@@ -197,7 +197,7 @@ try {
 			gates: [],
 			artifacts: ["near_neighbor_registry.json"],
 			stateArtifacts: ["literature_registry=near_neighbor_registry.json"],
-			nextAction: "Run PRIOR_CLAIM_DRAIN only after a valid SCOPE_LOCK commit.",
+			nextAction: "Complete SCOPE_LOCK and advance exactly once to PRIOR_CLAIM_DRAIN.",
 			strict: true,
 		},
 		main,
@@ -217,7 +217,7 @@ try {
 			gates: ["scope_locked=true"],
 			artifacts: ["scope_lock.md", "hierarchy_status.md"],
 			stateArtifacts: [],
-			nextAction: "Run PRIOR_CLAIM_DRAIN before frontier search.",
+			nextAction: "Complete SCOPE_LOCK and advance exactly once to PRIOR_CLAIM_DRAIN.",
 			strict: true,
 		},
 		main,
@@ -225,7 +225,7 @@ try {
 	assert(rejectedAdvance.isError, "invalid target state unexpectedly committed");
 	assert(
 		rejectedAdvance.content.some(item => item.type === "text" && item.text.includes("transition_rolled_back=true")),
-		"failed target validation did not report transactional rollback",
+		`failed target validation did not report transactional rollback: ${JSON.stringify(rejectedAdvance)}`,
 	);
 	assert(await readFile(statePath, "utf8") === originalState, "failed target validation left workflow_state.json advanced");
 	assert(!Bun.file(path.join(root, ".workflow_stop.lock")).size, "failed target validation left a STOP lock after rollback");
@@ -237,7 +237,7 @@ try {
 			gates: ["scope_locked=true"],
 			artifacts: ["scope_lock.md", "hierarchy_status.md"],
 			stateArtifacts: ["scope_lock=scope_lock.md", "hierarchy_status=hierarchy_status.md"],
-			nextAction: "Run PRIOR_CLAIM_DRAIN before frontier search.",
+			nextAction: "Complete SCOPE_LOCK and advance exactly once to PRIOR_CLAIM_DRAIN.",
 			strict: true,
 		},
 		main,
@@ -250,7 +250,7 @@ try {
 		"advance omitted the hierarchy_status state pointer",
 	);
 	assert(
-		advancedState.next_required_action === "Run PRIOR_CLAIM_DRAIN before frontier search.",
+		advancedState.next_required_action === "Complete SCOPE_LOCK and advance exactly once to PRIOR_CLAIM_DRAIN.",
 		"advance left a stale next_required_action",
 	);
 
@@ -287,7 +287,7 @@ try {
 		{
 			recoveryNote: "registered missing scope artifact pointers",
 			stateArtifacts: ["scope_lock=scope_lock.md", "hierarchy_status=hierarchy_status.md"],
-			nextAction: "Drain prior-round claims before frontier search.",
+			nextAction: "Complete SCOPE_LOCK and advance exactly once to PRIOR_CLAIM_DRAIN.",
 			strict: true,
 		},
 		main,
@@ -355,7 +355,7 @@ try {
 		{
 			recoveryNote: "operator restored the external capability",
 			stateArtifacts: [],
-			nextAction: "Drain prior-round claims before frontier search.",
+			nextAction: "Complete SCOPE_LOCK and advance exactly once to PRIOR_CLAIM_DRAIN.",
 			resumeBlocked: true,
 			strict: true,
 		},
@@ -382,7 +382,7 @@ try {
 		{
 			recoveryNote: "replace an active evidence ledger without rewriting its historical version",
 			stateArtifacts: ["url_ledger=near_neighbor_url_ledger.v2.csv"],
-			nextAction: "Drain prior-round claims before frontier search.",
+			nextAction: "Complete SCOPE_LOCK and advance exactly once to PRIOR_CLAIM_DRAIN.",
 			strict: true,
 		},
 		main,
