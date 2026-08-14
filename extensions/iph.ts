@@ -215,12 +215,19 @@ export function transitionContributionIssue(
 	return undefined;
 }
 
-export function nextActionIssue(target: string, nextAction: string): string | undefined {
+export function requiredNextAction(target: string): string | undefined {
+	if (target === "COMPLETE") return "Workflow complete; do not advance further.";
 	const nextTarget = TRANSITION_PLANS[target]?.target;
-	if (!nextTarget) return undefined;
-	return nextAction.includes(nextTarget)
+	return nextTarget ? `Complete ${target} and advance exactly once to ${nextTarget}.` : undefined;
+}
+
+export function nextActionIssue(target: string, nextAction: string): string | undefined {
+	if (target === "BLOCKED") return undefined;
+	const required = requiredNextAction(target);
+	if (!required) return undefined;
+	return nextAction === required
 		? undefined
-		: `nextAction after ${target} must explicitly name immediate target ${nextTarget}`;
+		: `nextAction after ${target} must equal the deterministic contract exactly: ${JSON.stringify(required)}`;
 }
 
 function targetSemanticInputs(target: string): string[] {
@@ -378,6 +385,7 @@ export function nodeBriefing(
 				? "NONE or omit"
 				: text(state.output_type) === "JOURNAL_ARTICLE" ? "M (first L3 transition may omit and default to M)" : "A, B, or C",
 			postCommitNextTarget: TRANSITION_PLANS[plan.target]?.target ?? null,
+			requiredNextAction: requiredNextAction(plan.target),
 			stateArtifacts: plan.stateArtifacts,
 			immutableArtifacts: plan.immutableArtifacts,
 			semanticInputs: targetSemanticInputs(plan.target),
@@ -2087,6 +2095,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 						? "NONE or omit"
 						: text(state.output_type) === "JOURNAL_ARTICLE" ? "M (first L3 transition may omit and default to M)" : "A, B, or C",
 					postCommitNextTarget: TRANSITION_PLANS[plan.target]?.target ?? null,
+					requiredNextAction: requiredNextAction(plan.target),
 					briefing: nodeBriefing(text(state.active_state), state, plan, resolveSkillDir()),
 					executionPolicy: AGENT_NATIVE_EXECUTION_POLICY,
 					specialistDispatch: plan.specialist ? {
@@ -2132,7 +2141,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 			gates: z.array(z.string()).default(() => []).describe("Gate assignments such as scope_locked=true"),
 			artifacts: z.array(z.string()).default(() => []).describe("Canonical root-relative immutable files to hash into decision_log"),
 			stateArtifacts: z.array(z.string()).default(() => []).describe("Top-level artifact pointer assignments such as scope_lock=scope_lock.md; required when a newly true gate depends on the artifact"),
-			nextAction: z.string().min(1).describe("The single next_required_action after this transition"),
+			nextAction: z.string().min(1).describe("The exact requiredNextAction returned by iph_transition_plan"),
 			contribution: z.enum(["NONE", "M", "A", "B", "C"]).optional(),
 			noveltyLevel: z.enum(["N0-1", "N0-2", "N0-3", "N0-4C"]).optional().describe("Required only when entering N0_AUDIT; atomically paired with n0_4_locked"),
 			computeAuthorizationNote: z.string().min(1).optional().describe("Required only for DIRECTION_LOCK -> COMPUTE and only after explicit user authorization"),

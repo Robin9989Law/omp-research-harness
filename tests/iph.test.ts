@@ -18,6 +18,7 @@ import {
 	nodeBriefing,
 	recordSubagentLifecycle,
 	POSITIVE_STATE_SEQUENCE,
+	requiredNextAction,
 	requiredSpecialistForTarget,
 	resolveSkillDir,
 	restoreProtectedSnapshot,
@@ -151,8 +152,10 @@ describe("M3 control-plane routing", () => {
 		expect(transitionContributionIssue("K_FULLTEXT", "JOURNAL_ARTICLE", "NONE", undefined)).toBeUndefined();
 		expect(transitionContributionIssue("K_FULLTEXT", "DOCTORAL_DISSERTATION", "NONE", undefined)).toContain("A|B|C");
 		expect(transitionContributionIssue("K_FULLTEXT", "DOCTORAL_DISSERTATION", "NONE", "A")).toBeUndefined();
-		expect(nextActionIssue("L2_TRIAGE", "Run LAYER_DECISION after the K set is selected.")).toBeUndefined();
-		expect(nextActionIssue("L2_TRIAGE", "Skip directly to K_FULLTEXT.")).toContain("LAYER_DECISION");
+		expect(requiredNextAction("L2_TRIAGE")).toBe("Complete L2_TRIAGE and advance exactly once to LAYER_DECISION.");
+		expect(nextActionIssue("L2_TRIAGE", "Complete L2_TRIAGE and advance exactly once to LAYER_DECISION.")).toBeUndefined();
+		expect(nextActionIssue("L2_TRIAGE", "Run LAYER_DECISION after the K set is selected.")).toContain("must equal");
+		expect(nextActionIssue("COMPLETE", "Workflow complete; do not advance further.")).toBeUndefined();
 	});
 
 	test("requires an explicit, reasoned disposition without treating specialist completion as authority", () => {
