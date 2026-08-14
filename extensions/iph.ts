@@ -256,6 +256,45 @@ interface NodeExample {
 	invalid: string;
 }
 
+const NODE_ARTIFACT_INPUTS: Record<string, string[]> = {
+	SCOPE_LOCK: ["scope_lock", "hierarchy_status"],
+	PRIOR_CLAIM_DRAIN: ["scope_lock", "hierarchy_status", "prior_claim_drain"],
+	RECENT_FRONTIER: ["literature_registry", "url_ledger", "frontier_coverage", "scope_lock"],
+	LITERATURE_REGISTER: ["literature_registry", "url_ledger", "frontier_coverage", "claim_registry"],
+	L1_FREEZE: ["l1_card", "literature_registry", "frontier_coverage"],
+	L2_TRIAGE: ["l1_card", "k_triage", "literature_registry", "frontier_coverage"],
+	LAYER_DECISION: ["l2_card", "contribution_architecture", "literature_registry", "current_evidence_scope"],
+	K_FULLTEXT: ["literature_registry", "literature_archive", "current_evidence_scope"],
+	K_CLAIM_REGISTER: ["claim_registry", "literature_registry", "current_evidence_scope", "output_support"],
+	SYNTHESIZE_COLLISION: ["claim_registry", "output_support", "current_evidence_scope"],
+	OUTPUT_CLAIM_BIND: ["output_support", "claim_registry", "literature_registry", "current_evidence_scope"],
+	EVIDENCE_VALIDATE: ["hierarchy_novelty_audit", "output_support", "claim_registry", "current_evidence_scope"],
+	N0_AUDIT: ["hierarchy_novelty_audit", "output_support", "claim_registry", "claim_inventory"],
+	CLAIM_FREEZE: ["claim_inventory", "theory_obligations", "protocol_contract", "claim_code_trace", "baseline_budget", "audit_manifest"],
+	VALIDITY_AUDIT: ["claim_inventory", "theory_obligations", "protocol_contract", "claim_code_trace", "baseline_budget", "audit_manifest"],
+	INDEPENDENT_REVIEW: ["audit_manifest", "claim_inventory", "theory_obligations", "protocol_contract", "claim_code_trace", "baseline_budget", "hierarchy_novelty_audit"],
+	DIRECTION_LOCK: ["independent_audit", "audit_manifest", "claim_inventory", "hierarchy_novelty_audit"],
+	COMPUTE: ["compute_evidence", "claim_inventory", "protocol_contract", "claim_code_trace", "baseline_budget"],
+	POSTCOMPUTE_CLAIM_FREEZE: ["claim_inventory", "theory_obligations", "protocol_contract", "claim_code_trace", "baseline_budget", "audit_manifest", "compute_evidence"],
+	FINAL_VALIDITY_AUDIT: ["audit_manifest", "claim_inventory", "theory_obligations", "protocol_contract", "claim_code_trace", "baseline_budget", "compute_evidence"],
+	FINAL_LOCK: ["independent_audit", "audit_manifest", "compute_evidence"],
+};
+
+function authorityInputsForNode(activeState: string, skillDir: string | undefined): string[] {
+	if (!skillDir) return [];
+	const noveltyNodes = new Set([
+		"SCOPE_LOCK", "PRIOR_CLAIM_DRAIN", "RECENT_FRONTIER", "LITERATURE_REGISTER", "L1_FREEZE",
+		"L2_TRIAGE", "LAYER_DECISION", "K_FULLTEXT", "K_CLAIM_REGISTER", "SYNTHESIZE_COLLISION",
+		"OUTPUT_CLAIM_BIND", "EVIDENCE_VALIDATE", "N0_AUDIT",
+	]);
+	const computeNodes = new Set(["DIRECTION_LOCK", "COMPUTE", "POSTCOMPUTE_CLAIM_FREEZE"]);
+	const files = ["SKILL.md"];
+	if (noveltyNodes.has(activeState)) files.push("evidence-pipeline.md", "reference.md");
+	else if (computeNodes.has(activeState)) files.push("compute-funnel.md", "reference.md");
+	else files.push("reference.md", "templates.md");
+	return files.map(relative => path.join(skillDir, relative));
+}
+
 export const POSITIVE_STATE_SEQUENCE = [
 	"BOOT",
 	"SCOPE_LOCK",
@@ -377,9 +416,12 @@ export function nodeBriefing(
 	plan: TransitionPlan,
 	skillDir: string | undefined,
 ) {
-	const artifacts = state.artifacts && typeof state.artifacts === "object"
-		? Object.values(state.artifacts as Record<string, unknown>).filter(value => typeof value === "string") as string[]
-		: [];
+	const artifactMap = state.artifacts && typeof state.artifacts === "object"
+		? state.artifacts as Record<string, unknown>
+		: {};
+	const artifacts = (NODE_ARTIFACT_INPUTS[activeState] ?? [])
+		.map(key => artifactMap[key])
+		.filter((value): value is string => typeof value === "string" && value.length > 0);
 	const example = NODE_EXAMPLES[activeState] ?? {
 		valid: `Produce only ${plan.requiredDrafts.join(", ") || "the contracted state change"}, satisfy the validator and commit exactly one ${activeState} -> ${plan.target} transaction.`,
 		invalid: `Perform forbidden work, invent an unstated gate, or continue past ${plan.target} in the same transaction.`,
@@ -389,9 +431,10 @@ export function nodeBriefing(
 		question: `What is the strongest evidence-grounded result that legitimately completes ${activeState} -> ${plan.target} without crossing the layer boundary?`,
 		readBeforeAct: [
 			"workflow_state.json",
-			...artifacts.sort(),
-			...(skillDir ? [path.join(skillDir, "SKILL.md"), path.join(skillDir, "templates.md"), path.join(skillDir, "reference.md")] : []),
+			...[...new Set(artifacts)].sort(),
+			...authorityInputsForNode(activeState, skillDir),
 		],
+		readScope: "Minimum direct dependencies for this gate, not a ceiling on M3's global reasoning. Read additional evidence only when a named open question requires it.",
 		outputContract: {
 			requiredDrafts: plan.requiredDrafts,
 			requiredGateAssignments: requiredGateAssignments(plan.target),
@@ -1263,6 +1306,11 @@ function protectedEntryEqual(left: ProtectedEntry | undefined, right: ProtectedE
 	return false;
 }
 
+function isAllowedNewReviewEntry(relative: string, entry: ProtectedEntry | undefined): boolean {
+	if (relative === REVIEW_DIR) return entry?.kind === "directory";
+	return /^review_artifacts\/[^/]+\.json$/.test(relative) && entry?.kind === "file";
+}
+
 async function currentProtectedSnapshot(snapshot: ProtectedSnapshot): Promise<ProtectedSnapshot> {
 	const configured = snapshot.reviewFiles.find(relative => relative !== "independent_audit.json");
 	return captureProtectedSnapshot(snapshot.root, snapshot.includeReview, snapshot.allowNewReviewFiles, configured);
@@ -1275,9 +1323,7 @@ export async function restoreProtectedSnapshot(snapshot: ProtectedSnapshot): Pro
 		const newlyCreated = !snapshot.entries.has(relative) ? current.entries.get(relative) : undefined;
 		if (
 			snapshot.allowNewReviewFiles &&
-			relative.startsWith(`${REVIEW_DIR}/`) &&
-			newlyCreated &&
-			newlyCreated.kind !== "symlink"
+			isAllowedNewReviewEntry(relative, newlyCreated)
 		) {
 			continue;
 		}
@@ -2582,10 +2628,10 @@ export default function iphExtension(pi: ExtensionAPI) {
 						return { block: true, reason: "Only the iph-reviewer subagent may author review artifacts." };
 					}
 					const absolute = path.isAbsolute(target) ? path.normalize(target) : path.resolve(ctx.cwd, target);
-					if (existsSync(absolute) || !relative.startsWith(`${REVIEW_DIR}/`)) {
+					if (existsSync(absolute) || !/^review_artifacts\/[^/]+\.json$/.test(relative)) {
 						return {
 							block: true,
-							reason: "Existing review artifacts are immutable; an active iph-reviewer may only create a new file under review_artifacts/.",
+							reason: "Existing review artifacts are immutable; an active iph-reviewer may only create a new direct-child JSON file under review_artifacts/.",
 						};
 					}
 				}

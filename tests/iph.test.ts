@@ -92,13 +92,15 @@ describe("M3 control-plane routing", () => {
 		expect(plan).toBeDefined();
 		const briefing = nodeBriefing(
 			"LITERATURE_REGISTER",
-			{ artifacts: { literature_registry: "near_neighbor_registry.json", url_ledger: "near_neighbor_url_ledger.v2.csv" } },
+			{ artifacts: { literature_registry: "near_neighbor_registry.json", url_ledger: "near_neighbor_url_ledger.v2.csv", unrelated_future: "compute_evidence.json" } },
 			plan!,
 			"/authoritative/iph",
 		);
 		expect(briefing.instruction).toContain("READ");
 		expect(briefing.readBeforeAct).toContain("near_neighbor_registry.json");
-		expect(briefing.readBeforeAct).toContain("/authoritative/iph/templates.md");
+		expect(briefing.readBeforeAct).toContain("/authoritative/iph/evidence-pipeline.md");
+		expect(briefing.readBeforeAct).not.toContain("compute_evidence.json");
+		expect(briefing.readScope).toContain("not a ceiling");
 		expect(briefing.examples.valid).toContain("NOT_QUALIFIED");
 		expect(briefing.examples.invalid).toContain("atomic/full-text claim");
 		expect(briefing.completionProof.join(" ")).toContain("formally completed");
@@ -743,6 +745,26 @@ describe("protected artifact rollback", () => {
 			await writeFile(path.join(root, "review_artifacts", "epoch-1-fail.json"), "{\"verdict\":\"FAIL\"}\n");
 			expect(await restoreProtectedSnapshot(snapshot)).toEqual([]);
 			expect(await readFile(path.join(root, "review_artifacts", "epoch-1-fail.json"), "utf8")).toContain("FAIL");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("allows a reviewer to create the review directory but rolls back non-JSON side files", async () => {
+		const root = await mkdtemp(path.join(tmpdir(), "iph-review-new-directory-"));
+		try {
+			await writeFile(path.join(root, "workflow_state.json"), "state-original\n");
+			await writeFile(path.join(root, "lifecycle_state.json"), "lifecycle-original\n");
+			const snapshot = await captureProtectedSnapshot(root, true, true);
+			await mkdir(path.join(root, "review_artifacts"));
+			await writeFile(path.join(root, "review_artifacts", "epoch-1.json"), "{\"verdict\":\"PASS\"}\n");
+			expect(await restoreProtectedSnapshot(snapshot)).toEqual([]);
+			expect(await readFile(path.join(root, "review_artifacts", "epoch-1.json"), "utf8")).toContain("PASS");
+
+			const sideFileSnapshot = await captureProtectedSnapshot(root, true, true);
+			await writeFile(path.join(root, "review_artifacts", "verify.py"), "print('not an audit')\n");
+			expect(await restoreProtectedSnapshot(sideFileSnapshot)).toContain("review_artifacts/verify.py");
+			await expect(readFile(path.join(root, "review_artifacts", "verify.py"), "utf8")).rejects.toThrow();
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
