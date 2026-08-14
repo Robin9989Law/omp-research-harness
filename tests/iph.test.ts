@@ -14,6 +14,7 @@ import {
 	inspectStopLock,
 	inspectSpecialistCompletion,
 	mutableArtifactConflicts,
+	nodeBriefing,
 	recordSubagentLifecycle,
 	POSITIVE_STATE_SEQUENCE,
 	requiredSpecialistForTarget,
@@ -74,6 +75,23 @@ describe("read-only STOP visibility", () => {
 });
 
 describe("M3 control-plane routing", () => {
+	test("briefs critical nodes with题面、requirements, examples and completion proof before action", () => {
+		const plan = transitionPlanForState({ active_state: "LITERATURE_REGISTER" } as never);
+		expect(plan).toBeDefined();
+		const briefing = nodeBriefing(
+			"LITERATURE_REGISTER",
+			{ artifacts: { literature_registry: "near_neighbor_registry.json", url_ledger: "near_neighbor_url_ledger.v2.csv" } },
+			plan!,
+			"/authoritative/iph",
+		);
+		expect(briefing.instruction).toContain("READ");
+		expect(briefing.readBeforeAct).toContain("near_neighbor_registry.json");
+		expect(briefing.readBeforeAct).toContain("/authoritative/iph/templates.md");
+		expect(briefing.examples.valid).toContain("NOT_QUALIFIED");
+		expect(briefing.examples.invalid).toContain("atomic/full-text claim");
+		expect(briefing.completionProof.join(" ")).toContain("formally completed");
+	});
+
 	test("requires an explicit, reasoned disposition without treating specialist completion as authority", () => {
 		expect(specialistDispositionIssue("frontier-auditor", undefined, undefined, undefined)).toContain("specialistAgentId");
 		expect(specialistDispositionIssue("frontier-auditor", "FrontierAudit", undefined, undefined)).toContain("specialistDisposition");
@@ -148,6 +166,45 @@ describe("M3 control-plane routing", () => {
 		);
 		expect(result.completed).toBeTrue();
 		expect(result.status).toBe("completed");
+	});
+
+	test("keeps lifecycle terminal states monotonic under duplicate and out-of-order events", () => {
+		clearRuntimeRegistryForTests();
+		const binding = {
+			researchRoot: "/tmp/research-events",
+			target: "RECENT_FRONTIER",
+			agents: new Set(["frontier-auditor"]),
+		};
+		const event = (id: string, status: "started" | "completed" | "failed" | "aborted", sessionFile: string) => ({
+			id,
+			agent: "frontier-auditor",
+			status,
+			sessionFile,
+			parentToolCallId: "task-events",
+		});
+
+		recordSubagentLifecycle(event("Ordered", "started", "/tmp/ordered.jsonl"), binding);
+		recordSubagentLifecycle(event("Ordered", "completed", "/tmp/ordered.jsonl"), binding);
+		recordSubagentLifecycle(event("Ordered", "started", "/tmp/ordered.jsonl"), binding);
+		recordSubagentLifecycle(event("Ordered", "failed", "/tmp/ordered.jsonl"), binding);
+		expect(inspectSpecialistCompletion(
+			"Ordered", "frontier-auditor", "/tmp/research-events", "RECENT_FRONTIER",
+		).status).toBe("completed");
+
+		recordSubagentLifecycle(event("OutOfOrder", "completed", "/tmp/out-of-order.jsonl"), binding);
+		recordSubagentLifecycle(event("OutOfOrder", "started", "/tmp/out-of-order.jsonl"));
+		expect(inspectSpecialistCompletion(
+			"OutOfOrder", "frontier-auditor", "/tmp/research-events", "RECENT_FRONTIER",
+		).completed).toBeTrue();
+
+		recordSubagentLifecycle(event("Original", "started", "/tmp/collision.jsonl"), binding);
+		recordSubagentLifecycle(event("Impostor", "completed", "/tmp/collision.jsonl"), binding);
+		expect(inspectSpecialistCompletion(
+			"Original", "frontier-auditor", "/tmp/research-events", "RECENT_FRONTIER",
+		).status).toBe("started");
+		expect(inspectSpecialistCompletion(
+			"Impostor", "frontier-auditor", "/tmp/research-events", "RECENT_FRONTIER",
+		).status).toBe("not_observed");
 	});
 
 	test("covers the complete positive state topology with no contract gaps", () => {

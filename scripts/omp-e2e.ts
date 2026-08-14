@@ -86,6 +86,15 @@ try {
 		transitionPlan.content.some(item => item.type === "text" && item.text.includes('"target": "SCOPE_LOCK"')),
 		"BOOT transition plan omitted the deterministic target",
 	);
+	assert(
+		transitionPlan.content.some(item =>
+			item.type === "text" &&
+			item.text.includes('"readBeforeAct"') &&
+			item.text.includes('"examples"') &&
+			item.text.includes('"completionProof"')
+		),
+		"BOOT transition plan omitted the Agent-readable node briefing",
+	);
 
 	const nested = path.join(root, "analysis", "figures");
 	await mkdir(nested, { recursive: true });

@@ -100,6 +100,11 @@ interface TransitionPlan {
 	forbidden: string[];
 }
 
+interface NodeExample {
+	valid: string;
+	invalid: string;
+}
+
 export const POSITIVE_STATE_SEQUENCE = [
 	"BOOT",
 	"SCOPE_LOCK",
@@ -175,6 +180,73 @@ const AGENT_NATIVE_EXECUTION_POLICY = [
 	"Once required artifacts exist and the authoritative validator is READY, complete the gate task formally before optional exploration; do not spend the identity-bearing completion window on unrelated searches.",
 	"If optional evidence could materially change the verdict, stop safely with the exact open question and continue in a new bounded task; preserve drafts but never reuse a timed-out or stale specialist identity.",
 ];
+
+const NODE_EXAMPLES: Record<string, NodeExample> = {
+	PRIOR_CLAIM_DRAIN: {
+		valid: "Audit every falsification candidate against identified near-24-month works and preserve unresolved routes as bounded gaps.",
+		invalid: "Treat unavailable search routes as negative evidence or qualify works whose identity/publication status is unverified.",
+	},
+	RECENT_FRONTIER: {
+		valid: "Register identity, publication and peer-review evidence by semantic role; one authoritative publisher page may serve several roles.",
+		invalid: "Optimize URL distinctness, or use an arXiv/bioRxiv/medRxiv/SSRN page as proof of peer review.",
+	},
+	LITERATURE_REGISTER: {
+		valid: "An L1 card maps every candidate to metadata/abstract evidence, preserves NOT_QUALIFIED boundaries and states unmapped items explicitly.",
+		invalid: "Promote an abstract-level lead into an atomic/full-text claim, silently renumber candidates, or lock an R/F path.",
+	},
+	L1_FREEZE: {
+		valid: "L2 triage selects a bounded K set and records why each item merits full-text review without extracting atomic claims yet.",
+		invalid: "Batch full text outside K, infer L3 claims from abstracts, or choose K without a trace to the frozen L1 card.",
+	},
+	L2_TRIAGE: {
+		valid: "The contribution architecture reconciles the frozen layers with output type and names remaining obligations and stop conditions.",
+		invalid: "Choose a contribution contract to evade evidence obligations or imply compute authorization.",
+	},
+	K_CLAIM_REGISTER: {
+		valid: "Every atomic claim has a stable ID, archived source hash and exact locator, with quotation and interpretation kept distinct.",
+		invalid: "Use chapter summaries, unarchived text, unverifiable locators or coordinator-authored paraphrases as atomic evidence.",
+	},
+	SYNTHESIZE_COLLISION: {
+		valid: "Each output claim binds evidence, explicit reasoning and a scoped statement while retaining counter-evidence and uncertainty.",
+		invalid: "Declare novelty from similarity alone, omit the reasoning bridge or hide contradictory atomic claims.",
+	},
+};
+
+export function nodeBriefing(
+	activeState: string,
+	state: WorkflowState,
+	plan: TransitionPlan,
+	skillDir: string | undefined,
+) {
+	const artifacts = state.artifacts && typeof state.artifacts === "object"
+		? Object.values(state.artifacts as Record<string, unknown>).filter(value => typeof value === "string") as string[]
+		: [];
+	const example = NODE_EXAMPLES[activeState] ?? {
+		valid: `Produce only ${plan.requiredDrafts.join(", ") || "the contracted state change"}, satisfy the validator and commit exactly one ${activeState} -> ${plan.target} transaction.`,
+		invalid: `Perform forbidden work, invent an unstated gate, or continue past ${plan.target} in the same transaction.`,
+	};
+	return {
+		instruction: "READ the question, authoritative requirements, current evidence and examples before reasoning; then ACT only after you can state the completion proof.",
+		question: `What is the strongest evidence-grounded result that legitimately completes ${activeState} -> ${plan.target} without crossing the layer boundary?`,
+		readBeforeAct: [
+			"workflow_state.json",
+			...artifacts.sort(),
+			...(skillDir ? [path.join(skillDir, "SKILL.md"), path.join(skillDir, "templates.md"), path.join(skillDir, "reference.md")] : []),
+		],
+		outputContract: {
+			requiredDrafts: plan.requiredDrafts,
+			stateArtifacts: plan.stateArtifacts,
+			immutableArtifacts: plan.immutableArtifacts,
+		},
+		examples: example,
+		completionProof: [
+			"All contracted drafts exist and their semantics match the current evidence layer.",
+			"Authoritative strict validator is READY (warnings remain explicit).",
+			...(plan.specialist ? ["Specialist lifecycle is formally completed and M3 records ACCEPTED or OVERRIDDEN with rationale."] : []),
+			`Exactly one transaction commits ${activeState} -> ${plan.target}; optional exploration remains a separate bounded task.`,
+		],
+	};
+}
 
 const TRANSITION_FILES = [WORKFLOW_FILE, LIFECYCLE_FILE, STOP_LOCK_FILE, VALIDATION_LOG_FILE] as const;
 
@@ -474,14 +546,19 @@ export function recordSubagentLifecycle(payload: unknown, binding?: SpecialistDi
 		return;
 	}
 	const sessionFile = normalizedSessionFile(candidate.sessionFile);
+	const existing = runtimeRegistry().get(sessionFile);
+	if (existing && (existing.id !== candidate.id || existing.agent !== candidate.agent)) return;
+	const terminal = new Set<SubagentLifecycleRecord["status"]>(["completed", "failed", "aborted"]);
+	if (existing && terminal.has(existing.status)) return;
+	const bound = binding?.agents.has(candidate.agent) ? binding : undefined;
 	runtimeRegistry().set(sessionFile, {
 		id: candidate.id,
 		agent: candidate.agent,
 		status: candidate.status as SubagentLifecycleRecord["status"],
 		sessionFile,
-		parentToolCallId: text(candidate.parentToolCallId) || undefined,
-		researchRoot: binding?.agents.has(candidate.agent) ? binding.researchRoot : undefined,
-		target: binding?.agents.has(candidate.agent) ? binding.target : undefined,
+		parentToolCallId: text(candidate.parentToolCallId) || existing?.parentToolCallId,
+		researchRoot: bound?.researchRoot ?? existing?.researchRoot,
+		target: bound?.target ?? existing?.target,
 	});
 }
 
@@ -1715,6 +1792,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 					blockedReasons: state.blocked_reasons,
 					nextRequiredAction: state.next_required_action,
 					...plan,
+					briefing: nodeBriefing(text(state.active_state), state, plan, resolveSkillDir()),
 					executionPolicy: AGENT_NATIVE_EXECUTION_POLICY,
 					specialistDispatch: plan.specialist ? {
 						tool: "task",

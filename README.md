@@ -200,7 +200,7 @@ validator。
 本项目用 [SYSTEM_TEST_MATRIX.md](SYSTEM_TEST_MATRIX.md) 管理完整验证面，并用
 [AGENT_NATIVE_ENGINEERING.md](AGENT_NATIVE_ENGINEERING.md) 固化面向 Agent 用户的接口、生命周期、
 可靠性和可观测准则：23 个正向
-状态节点、22 条迁移、专家角色路由、正负 N0 终态、17 类故障注入、STOP/BLOCKED 恢复、事务回滚、
+状态节点、22 条迁移、专家角色路由、正负 N0 终态、19 类故障注入、STOP/BLOCKED 恢复、事务回滚、
 防篡改、计算门、安装和打包。升级固定按静态拓扑 → 单元 → 真实 OMP 组件 → 故障注入
 → 部署 → 真实 M3 单步重放执行，首错即停，不靠重复清锁碰运气。
 
@@ -209,6 +209,10 @@ validator。
 M3 的思考范围。M3 负责从全局目标反推当前最佳行动、提出和反驳创新假设、比较机会成本，并批判
 specialist 的论据；specialist 提供独立领域审计，validator 裁决机器事实。模型路由是能力组合，
 不是“弱主模型服从强模型”的等级关系。
+
+关键节点采用 `READ → REASON → ACT`：`iph_transition_plan` 不只返回文件名，还提供必读的当前证据、
+权威参考、输出形状、最小正例、典型反例与 completion proof。这些内容让 M3 知道如何交付，
+但不替它预设结论或限制全局思考。
 
 全局推理与执行预算分开：M3 可以决定继续探索，但 identity-bearing gate task 在必需工件齐备且
 validator READY 后必须先正式完成。额外阅读作为新的有界任务继续；超时留下的 draft 可以复核续接，

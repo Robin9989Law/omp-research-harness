@@ -8,6 +8,10 @@
   副作用，不限制思考空间；specialist 是独立对抗同伴，scaffold 改动需做能力激发消融。
 - specialist 完成身份不再暗示结论权威；专属迁移门要求 M3 显式记录
   `ACCEPTED` 或 `OVERRIDDEN` 及证据/规则/validator 理由。
+- transition plan 增加 `READ → REASON → ACT` 节点 briefing：必读证据、权威参考、
+  输出合同、最小正反例和 completion proof，减少 M3 因输出不可构造而徘徊。
+- task lifecycle 改为单调事件流：终态不得被延迟/ 重复 `started` 或冲突终态回退，
+  乱序终态保留已认证的 research root 与 target 绑定。
 - 分离 gate closure 与开放探索预算：validator READY 后 specialist 先正式完成；超时 draft
   可由新任务复核续接，但 stale identity 不可用于推进。
 - URL verification 改为证据角色合同而非 distinctness 计数；预印本不得证明同行评审，

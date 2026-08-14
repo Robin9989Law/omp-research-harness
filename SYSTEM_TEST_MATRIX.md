@@ -54,6 +54,8 @@
 | F15 | 为满足自造的 URL distinctness，把 arXiv 预印本写成同行评审证明 | URL 字段按证据角色校验；预印本域不得证明 `PEER_REVIEWED_*`；活动 ledger 使用版本化 state pointer | Python 正反测试 + 真实 M3 语义逃逸轨迹 |
 | F16 | specialist 已完成但结论与权威规则冲突 | 允许 M3 接受或推翻，但迁移必须记录 disposition 及证据/规则/validator 依据 | disposition 合同单测 + decision note 审计 |
 | F17 | 磁盘上存在 URL ledger，但已置真的 literature gate 没有活动指针 | validator 拒绝隐式文件名猜测；要求 `artifacts.url_ledger` 并用版本化修复工具原子切换 | workflow-state 单测 + 真实 M3 拒绝无根修复轨迹 |
+| F18 | M3 理解目标但不知如何构造 validator 可接受的输出 | transition plan 先给题面、必读证据、输出合同、最小正例、反例与 completion proof | briefing 单测 + 真实 OMP loader |
+| F19 | task lifecycle 重复/乱序：`completed` 后到 `started/failed`，或终态先到 | 生命周期单调；终态不回退，重复幂等，身份/作用域不被后到事件污染 | duplicate/out-of-order/identity-collision 单测 |
 
 ## 4. 分层测试顺序
 
