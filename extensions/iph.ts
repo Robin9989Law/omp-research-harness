@@ -215,15 +215,24 @@ export function transitionContributionIssue(
 	return undefined;
 }
 
-export function requiredNextAction(target: string): string | undefined {
+export const N0_REQUIRED_NEXT_ACTIONS: Record<string, string> = {
+	"N0-1": "Novelty terminal N0-1; preserve the falsification artifacts and stop.",
+	"N0-2": "Novelty terminal N0-2; preserve the falsification artifacts and stop.",
+	"N0-3": "Novelty hold N0-3; revise the candidate or begin a new collision round before further advancement.",
+	"N0-4C": "Complete N0_AUDIT and advance exactly once to CLAIM_FREEZE.",
+};
+
+export function requiredNextAction(target: string, noveltyLevel?: string): string | undefined {
 	if (target === "COMPLETE") return "Workflow complete; do not advance further.";
+	if (target === "N0_AUDIT") return N0_REQUIRED_NEXT_ACTIONS[noveltyLevel ?? ""];
 	const nextTarget = TRANSITION_PLANS[target]?.target;
 	return nextTarget ? `Complete ${target} and advance exactly once to ${nextTarget}.` : undefined;
 }
 
-export function nextActionIssue(target: string, nextAction: string): string | undefined {
+export function nextActionIssue(target: string, nextAction: string, noveltyLevel?: string): string | undefined {
 	if (target === "BLOCKED") return undefined;
-	const required = requiredNextAction(target);
+	const required = requiredNextAction(target, noveltyLevel);
+	if (target === "N0_AUDIT" && !required) return "nextAction for N0_AUDIT requires the transaction noveltyLevel";
 	if (!required) return undefined;
 	return nextAction === required
 		? undefined
@@ -390,6 +399,7 @@ export function nodeBriefing(
 				: text(state.output_type) === "JOURNAL_ARTICLE" ? "M (first L3 transition may omit and default to M)" : "A, B, or C",
 			postCommitNextTarget: TRANSITION_PLANS[plan.target]?.target ?? null,
 			requiredNextAction: requiredNextAction(plan.target),
+			requiredNextActionOptions: plan.target === "N0_AUDIT" ? N0_REQUIRED_NEXT_ACTIONS : undefined,
 			stateArtifacts: plan.stateArtifacts,
 			immutableArtifacts: plan.immutableArtifacts,
 			semanticInputs: targetSemanticInputs(plan.target),
@@ -2062,7 +2072,8 @@ export default function iphExtension(pi: ExtensionAPI) {
 			const plan = transitionPlanForState(state);
 			const stopLock = await inspectStopLock(root);
 			if (!plan) {
-				if (text(state.active_state) === "N0_AUDIT" && ["N0-1", "N0-2"].includes(text(state.novelty_level))) {
+				if (text(state.active_state) === "N0_AUDIT" && ["N0-1", "N0-2", "N0-3"].includes(text(state.novelty_level))) {
+					const novelty = text(state.novelty_level);
 					return toolResult({
 						status: "READY",
 						exitCode: 0,
@@ -2071,11 +2082,15 @@ export default function iphExtension(pi: ExtensionAPI) {
 							resumeState: state.resume_state,
 							stopLockActive: stopLock.active,
 							stopLock: stopLock.details,
-							noveltyLevel: state.novelty_level,
+							noveltyLevel: novelty,
 							terminal: true,
+							terminalKind: novelty === "N0-3" ? "HOLD" : "NEGATIVE_RESULT",
 							target: null,
 							nextRequiredAction: state.next_required_action,
-							rules: ["Preserve the negative-result artifacts and do not force the workflow to COMPLETE."],
+							requiredNextAction: N0_REQUIRED_NEXT_ACTIONS[novelty],
+							rules: [novelty === "N0-3"
+								? "Revise the candidate or start a new collision round; do not advance to CLAIM_FREEZE."
+								: "Preserve the negative-result artifacts and do not force the workflow to COMPLETE."],
 						}, null, 2),
 						stderr: "",
 						root,
@@ -2100,6 +2115,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 						: text(state.output_type) === "JOURNAL_ARTICLE" ? "M (first L3 transition may omit and default to M)" : "A, B, or C",
 					postCommitNextTarget: TRANSITION_PLANS[plan.target]?.target ?? null,
 					requiredNextAction: requiredNextAction(plan.target),
+					requiredNextActionOptions: plan.target === "N0_AUDIT" ? N0_REQUIRED_NEXT_ACTIONS : undefined,
 					briefing: nodeBriefing(text(state.active_state), state, plan, resolveSkillDir()),
 					executionPolicy: AGENT_NATIVE_EXECUTION_POLICY,
 					specialistDispatch: plan.specialist ? {
@@ -2208,7 +2224,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 			if (contributionIssue) {
 				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${contributionIssue}`));
 			}
-			const actionIssue = nextActionIssue(input.to, input.nextAction);
+			const actionIssue = nextActionIssue(input.to, input.nextAction, input.noveltyLevel);
 			if (actionIssue) {
 				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${actionIssue}`));
 			}

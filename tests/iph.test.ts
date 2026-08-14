@@ -17,6 +17,7 @@ import {
 	mutableArtifactConflicts,
 	nodeBriefing,
 	recordSubagentLifecycle,
+	N0_REQUIRED_NEXT_ACTIONS,
 	POSITIVE_STATE_SEQUENCE,
 	requiredNextAction,
 	requiredSpecialistForTarget,
@@ -156,6 +157,9 @@ describe("M3 control-plane routing", () => {
 		expect(nextActionIssue("L2_TRIAGE", "Complete L2_TRIAGE and advance exactly once to LAYER_DECISION.")).toBeUndefined();
 		expect(nextActionIssue("L2_TRIAGE", "Run LAYER_DECISION after the K set is selected.")).toContain("must equal");
 		expect(nextActionIssue("COMPLETE", "Workflow complete; do not advance further.")).toBeUndefined();
+		expect(requiredNextAction("N0_AUDIT", "N0-4C")).toBe("Complete N0_AUDIT and advance exactly once to CLAIM_FREEZE.");
+		expect(nextActionIssue("N0_AUDIT", N0_REQUIRED_NEXT_ACTIONS["N0-3"]!, "N0-3")).toBeUndefined();
+		expect(nextActionIssue("N0_AUDIT", N0_REQUIRED_NEXT_ACTIONS["N0-4C"]!, "N0-3")).toContain("must equal");
 	});
 
 	test("requires an explicit, reasoned disposition without treating specialist completion as authority", () => {
