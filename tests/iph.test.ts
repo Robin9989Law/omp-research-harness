@@ -28,6 +28,7 @@ import {
 	specialistDispositionIssue,
 	specialistRuntimeModelEvidence,
 	transitionPlanForState,
+	transitionArtifactScopeIssue,
 	transitionGateIssue,
 	transitionTargetIssue,
 	transitionContributionIssue,
@@ -114,6 +115,34 @@ describe("M3 control-plane routing", () => {
 		expect(transitionTargetIssue({ active_state: "BOOT" }, "RECENT_FRONTIER")).toContain("state skip rejected");
 		expect(transitionTargetIssue({ active_state: "N0_AUDIT", novelty_level: "N0-2" }, "CLAIM_FREEZE")).toContain("no positive transition");
 		expect(transitionTargetIssue({ active_state: "L2_TRIAGE" }, "BLOCKED")).toBeUndefined();
+	});
+
+	test("requires the exact immutable artifact scope for every positive edge", () => {
+		expect(transitionArtifactScopeIssue(
+			{ active_state: "BOOT" },
+			"SCOPE_LOCK",
+			["scope_lock.md", "hierarchy_status.md"],
+		)).toBeUndefined();
+		expect(transitionArtifactScopeIssue(
+			{ active_state: "BOOT" },
+			"SCOPE_LOCK",
+			["scope_lock.md", "hierarchy_status.md", "l1-card.md"],
+		)).toContain("extra: l1-card.md");
+		expect(transitionArtifactScopeIssue(
+			{ active_state: "BOOT" },
+			"SCOPE_LOCK",
+			["scope_lock.md"],
+		)).toContain("missing: hierarchy_status.md");
+		expect(transitionArtifactScopeIssue(
+			{ active_state: "RECENT_FRONTIER" },
+			"LITERATURE_REGISTER",
+			["literature_registry.json"],
+		)).toContain("expected exactly: (none)");
+		expect(transitionArtifactScopeIssue(
+			{ active_state: "BOOT" },
+			"SCOPE_LOCK",
+			["scope_lock.md", "scope_lock.md", "hierarchy_status.md"],
+		)).toContain("extra: scope_lock.md");
 	});
 
 	test("makes contribution and next-action parameters constructible before mutation", () => {

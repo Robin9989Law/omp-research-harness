@@ -166,6 +166,31 @@ export function transitionTargetIssue(state: WorkflowState | undefined, target: 
 		: `state skip rejected: ${text(state.active_state)} must transition to ${plan.target}, not ${target}`;
 }
 
+export function transitionArtifactScopeIssue(
+	state: WorkflowState | undefined,
+	target: string,
+	artifacts: string[],
+): string | undefined {
+	if (target === "BLOCKED") return undefined;
+	const plan = transitionPlanForState(state);
+	if (!plan || plan.target !== target) return undefined;
+	const expectedCounts = new Map<string, number>();
+	const observedCounts = new Map<string, number>();
+	for (const artifact of plan.immutableArtifacts) {
+		expectedCounts.set(artifact, (expectedCounts.get(artifact) ?? 0) + 1);
+	}
+	for (const artifact of artifacts) {
+		observedCounts.set(artifact, (observedCounts.get(artifact) ?? 0) + 1);
+	}
+	const missing = [...expectedCounts.entries()].flatMap(([artifact, count]) =>
+		Array.from({ length: Math.max(0, count - (observedCounts.get(artifact) ?? 0)) }, () => artifact));
+	const extra = [...observedCounts.entries()].flatMap(([artifact, count]) =>
+		Array.from({ length: Math.max(0, count - (expectedCounts.get(artifact) ?? 0)) }, () => artifact));
+	if (missing.length === 0 && extra.length === 0) return undefined;
+	const expected = plan.immutableArtifacts.length > 0 ? plan.immutableArtifacts.join(", ") : "(none)";
+	return `immutable artifact scope mismatch for ${text(state?.active_state)} -> ${target}; expected exactly: ${expected}; missing: ${missing.join(", ") || "(none)"}; extra: ${extra.join(", ") || "(none)"}`;
+}
+
 const L1_L2_STATES = new Set([
 	"BOOT", "SCOPE_LOCK", "PRIOR_CLAIM_DRAIN", "RECENT_FRONTIER", "LITERATURE_REGISTER",
 	"L1_FREEZE", "L2_TRIAGE", "LAYER_DECISION",
@@ -2077,6 +2102,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 						...AGENT_NATIVE_EXECUTION_POLICY,
 						"Draft and validate before iph_advance.",
 						"Pass specialistAgentId when specialist is present.",
+						"Pass exactly the transition plan's immutableArtifacts: no missing, extra, future, or duplicate files.",
 						"Mutable pointer artifacts must not be included as immutableArtifacts.",
 						"A failed post-transition validation is rolled back automatically.",
 						"Call iph_* tools directly; never use ipc_call or another wrapper.",
@@ -2144,6 +2170,10 @@ export default function iphExtension(pi: ExtensionAPI) {
 			const targetIssue = transitionTargetIssue(currentState, input.to);
 			if (targetIssue) {
 				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${targetIssue}`));
+			}
+			const artifactScopeIssue = transitionArtifactScopeIssue(currentState, input.to, input.artifacts);
+			if (artifactScopeIssue) {
+				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${artifactScopeIssue}`));
 			}
 			const mutableConflicts = mutableArtifactConflicts(input.artifacts, input.stateArtifacts ?? []);
 			if (mutableConflicts.length > 0) {
