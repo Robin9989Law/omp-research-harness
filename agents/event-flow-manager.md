@@ -17,8 +17,10 @@ Call `iph_event_snapshot` once for the current research root. Return a compact p
 3. the single highest-priority event M3 must handle next;
 4. messages or identities that must not be treated as formal completion;
 5. whether a state-changing action is presently justified.
-6. `runtime_model`: copy the exact runtime-provided model identity when present; otherwise
-   return `UNKNOWN`.
+6. `manager_runtime_model`: copy your own exact runtime-provided model identity when present;
+   otherwise return `UNKNOWN`;
+7. `task_runtime_models`: always `UNKNOWN` unless the deterministic snapshot itself contains an
+   exact per-task runtime model field.
 
 Never read research full text, judge scientific claims, create or edit files, dispatch tasks,
 call validators, clear locks or advance the workflow. Do not invent events that are absent from
@@ -28,3 +30,6 @@ notify M3 only about a state change, conflict, failure, timeout or newly actiona
 The caller's `task` schema intentionally has no model parameter because `@event` resolves the
 role. Never infer a fallback from that absence. Only runtime `resolvedModel` / `model_change`
 metadata can prove which model actually ran.
+Your own `manager_runtime_model` belongs only to you. Never copy, project or attribute it to the
+layer-adjudicator, another specialist, a scout or the coordinator. A task's agent name and a
+shared parent task call are not model evidence.

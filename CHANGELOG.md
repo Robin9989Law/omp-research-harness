@@ -8,6 +8,8 @@
   正常的角色路由接口，不再被误报为回退到默认模型。
 - 新增 `scripts/run-local-omp.sh` / `npm run debug:omp`，以 `--plugin-dir` 成套加载本地工具、
   agents 与 SYSTEM；系统矩阵拒绝会制造半装载假故障的 `-e` / `--no-extensions` 调试入口。
+- specialist 模型 provenance 改由 harness 从认证 session 的 `model_change` 自动读取并写入；
+  disposition rationale 禁止自报模型，event-flow-manager 也不得把自己的 Flash 身份外推给其他任务。
 
 ## 0.0.4 - 2026-08-14
 

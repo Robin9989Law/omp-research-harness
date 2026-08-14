@@ -75,6 +75,8 @@ decision-state projection，再交给 DeepSeek V4 Flash 做优先级摘要；Fla
 模型路由也必须服从运行时证据：`task` 不暴露 model 参数是角色路由的正常接口形状，不能据此
 推断回退。实际执行模型只由 lifecycle 中的 `resolvedModel` / `model_change` 证明；元数据不可见时
 结论是 `UNKNOWN`，而不是默认模型。
+事件管理员只能报告自己的模型，不能把该值归给同一批 task 中的其他 agent。正式迁移由 harness
+读取认证 specialist session 的 `model_change` 自动记录；自由文本 rationale 不承担模型身份字段。
 
 证据字段是语义角色，不是计数指标。优化 URL distinctness、字段非空率或 validator 通过率时，
 不得改变证据的认识论职责：预印本能证明作品/版本存在，不能证明同行评审；同一个正式来源可以

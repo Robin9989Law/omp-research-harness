@@ -26,6 +26,7 @@ import {
 	sealRuntimeReview,
 	shouldContinueSessionStop,
 	specialistDispositionIssue,
+	specialistRuntimeModelEvidence,
 	transitionPlanForState,
 	transitionGateIssue,
 	transitionContributionIssue,
@@ -123,7 +124,29 @@ describe("M3 control-plane routing", () => {
 			"OVERRIDDEN",
 			"The distinct-URL objection has no contract basis; the validator accepts role-correct reuse.",
 		)).toBeUndefined();
+		expect(specialistDispositionIssue(
+			"frontier-auditor", "FrontierAudit", "ACCEPTED",
+			"The evidence is complete; runtime model was deepseek-v4-flash.",
+		)).toContain("must not assert runtime model identity");
 		expect(specialistDispositionIssue(undefined, undefined, undefined, undefined)).toBeUndefined();
+	});
+
+	test("reads specialist model identity from its authenticated session rather than free text", async () => {
+		clearRuntimeRegistryForTests();
+		const sessionFile = "/tmp/iph-specialist-model-evidence.jsonl";
+		await Bun.write(sessionFile, [
+			JSON.stringify({ type: "session" }),
+			JSON.stringify({ type: "model_change", model: "openai-codex/gpt-5.6-sol", resolvedModelIsFallback: false }),
+		].join("\n"));
+		recordSubagentLifecycle({
+			id: "LayerModelEvidence",
+			agent: "layer-adjudicator",
+			status: "completed",
+			sessionFile,
+		}, { researchRoot: "/tmp/model-evidence-root", target: "L2_TRIAGE", agents: new Set(["layer-adjudicator"]) });
+		expect(await specialistRuntimeModelEvidence(
+			"LayerModelEvidence", "layer-adjudicator", "/tmp/model-evidence-root", "L2_TRIAGE",
+		)).toMatchObject({ model: "openai-codex/gpt-5.6-sol", resolvedModelIsFallback: false });
 	});
 
 	test("accepts only formally completed specialists bound to the exact root and target", () => {

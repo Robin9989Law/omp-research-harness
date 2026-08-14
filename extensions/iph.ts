@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { lstat, mkdir, readFile, readdir, readlink, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, readdir, readlink, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
@@ -830,7 +830,47 @@ export function specialistDispositionIssue(
 	if (!rationale?.trim()) {
 		return `requires specialistRationale stating the evidence, rule, or validator basis for ${disposition}`;
 	}
+	if (/\b(?:runtime[_ -]?model|resolvedModel|model_change|GPT(?:-[\w.]+)?|DeepSeek(?:-[\w.]+)?|MiniMax(?:-[\w.]+)?|Claude(?:-[\w.]+)?|Gemini(?:-[\w.]+)?)\b/i.test(rationale)) {
+		return "specialistRationale must not assert runtime model identity; the harness records model_change evidence separately";
+	}
 	return undefined;
+}
+
+export async function specialistRuntimeModelEvidence(
+	agentId: string,
+	expectedAgent: string,
+	researchRoot: string,
+	target: string,
+): Promise<{ model: string; resolvedModelIsFallback: boolean | null; source: string }> {
+	const record = matchingSpecialistRecord(agentId, expectedAgent, researchRoot, target);
+	if (!record) return { model: "UNKNOWN", resolvedModelIsFallback: null, source: "no authenticated lifecycle record" };
+	let handle: Awaited<ReturnType<typeof open>> | undefined;
+	try {
+		handle = await open(record.sessionFile, "r");
+		const buffer = Buffer.alloc(128 * 1024);
+		const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+		for (const line of buffer.subarray(0, bytesRead).toString("utf8").split("\n")) {
+			if (!line.trim()) continue;
+			let entry: Record<string, unknown>;
+			try {
+				entry = JSON.parse(line) as Record<string, unknown>;
+			} catch {
+				continue;
+			}
+			if (entry.type === "model_change" && typeof entry.model === "string" && entry.model.trim()) {
+				return {
+					model: entry.model,
+					resolvedModelIsFallback: typeof entry.resolvedModelIsFallback === "boolean" ? entry.resolvedModelIsFallback : null,
+					source: `${record.sessionFile}#model_change`,
+				};
+			}
+		}
+		return { model: "UNKNOWN", resolvedModelIsFallback: null, source: `${record.sessionFile} has no readable model_change` };
+	} catch {
+		return { model: "UNKNOWN", resolvedModelIsFallback: null, source: `${record.sessionFile} is unreadable` };
+	} finally {
+		await handle?.close().catch(() => undefined);
+	}
 }
 
 export function mutableArtifactConflicts(artifacts: string[], assignments: string[]): string[] {
@@ -2061,6 +2101,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${actionIssue}`));
 			}
 			const requiredSpecialist = requiredSpecialistForTarget(input.to);
+			let runtimeModelEvidence: Awaited<ReturnType<typeof specialistRuntimeModelEvidence>> | undefined;
 			if (requiredSpecialist) {
 				const dispositionIssue = specialistDispositionIssue(
 					requiredSpecialist,
@@ -2087,9 +2128,12 @@ export default function iphExtension(pi: ExtensionAPI) {
 						`transition to ${input.to} requires authenticated ${requiredSpecialist} completion: ${completion.diagnosis}`,
 					));
 				}
+				runtimeModelEvidence = await specialistRuntimeModelEvidence(
+					input.specialistAgentId!, requiredSpecialist, root, input.to,
+				);
 			}
 			const transitionNote = requiredSpecialist
-				? `specialist=${input.specialistAgentId}; disposition=${input.specialistDisposition}; rationale=${input.specialistRationale}; ${input.note}`
+				? `specialist=${input.specialistAgentId}; runtime_model=${runtimeModelEvidence?.model ?? "UNKNOWN"}; resolved_model_is_fallback=${runtimeModelEvidence?.resolvedModelIsFallback ?? "UNKNOWN"}; model_evidence=${runtimeModelEvidence?.source ?? "UNKNOWN"}; disposition=${input.specialistDisposition}; rationale=${input.specialistRationale}; ${input.note}`
 				: input.note;
 			const args = ["--to", input.to, "--note", transitionNote, "--next-action", input.nextAction];
 			if (input.strict) args.push("--strict-new-checks");
