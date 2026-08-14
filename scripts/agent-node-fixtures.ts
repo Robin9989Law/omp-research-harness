@@ -42,6 +42,53 @@ async function fileSha(root: string, relative: string): Promise<string> {
 	return sha256(await readFile(path.join(root, relative)));
 }
 
+async function installAndVerifyTheoryWitness(root: string): Promise<void> {
+	const script = [
+		"#!/usr/bin/env python3",
+		"import sys",
+		"",
+		"CASES = {",
+		"    'minimal-positive': ('PASS: x=0 gives x+1=1>0.', 0),",
+		"    'nonzero-nuisance': ('PASS: x=2 gives x+1=3>0.', 0),",
+		"    'boundary-or-limit': ('PASS: boundary x=0 satisfies the conclusion.', 0),",
+		"    'premise-removal': ('FAIL: x=-2 violates x+1>0 when x>=0 is removed.', 1),",
+		"    'random-property': ('PASS: exhaustive integer sample x in [0, 10].', 0),",
+		"}",
+		"",
+		"if len(sys.argv) != 2 or sys.argv[1] not in CASES:",
+		"    print('usage: theory_witness.py {' + '|'.join(CASES) + '}', file=sys.stderr)",
+		"    raise SystemExit(2)",
+		"message, exit_code = CASES[sys.argv[1]]",
+		"print(message)",
+		"raise SystemExit(exit_code)",
+		"",
+	].join("\n");
+	await mkdir(path.join(root, "checks"), { recursive: true });
+	await writeFile(path.join(root, "checks", "theory_witness.py"), script);
+
+	const registry = await readJson(path.join(root, "theory_obligation_registry.json"));
+	for (const obligation of registry.obligations ?? []) {
+		for (const witness of obligation.witnesses ?? []) {
+			const command = String(witness.command ?? "").split(" ");
+			assert(
+				command.length === 3 && command[0] === "python3" && command[1] === "checks/theory_witness.py",
+				`unsupported theory witness command: ${witness.command}`,
+			);
+			const child = Bun.spawn(command, { cwd: root, stdout: "pipe", stderr: "pipe" });
+			const [exitCode, stdout, stderr] = await Promise.all([
+				child.exited,
+				new Response(child.stdout).arrayBuffer(),
+				new Response(child.stderr).text(),
+			]);
+			const stdoutBytes = new Uint8Array(stdout);
+			assert(exitCode === witness.exit_code, `${witness.kind} exit mismatch: ${exitCode} != ${witness.exit_code}; ${stderr}`);
+			assert(sha256(stdoutBytes) === witness.output_sha256, `${witness.kind} stdout hash mismatch`);
+			const recorded = await readFile(path.join(root, witness.output_file));
+			assert(Buffer.from(stdoutBytes).equals(recorded), `${witness.kind} stdout differs from ${witness.output_file}`);
+		}
+	}
+}
+
 function canonicalBundle(entries: JsonObject[]): string {
 	const normalized = entries
 		.map(entry => ({ path: entry.path, role: entry.role, sha256: entry.sha256 }))
@@ -72,6 +119,7 @@ async function repairEpochOneFixture(root: string): Promise<string> {
 		`Source: ${officialPage}`,
 		"",
 	].join("\n"));
+	await installAndVerifyTheoryWitness(root);
 	const archivedSha = await fileSha(root, "literature_archive/W-0001.pdf");
 	await writeJson(path.join(root, "near_neighbor_registry.json"), {
 		schema_version: "2.0",
@@ -204,15 +252,15 @@ async function repairEpochOneFixture(root: string): Promise<string> {
 		"",
 		"## 证伪书（falsification ledger）",
 		"",
-		"- [证伪路径] 直接占据：W-0001 的表 2 只覆盖固定阈值，不覆盖候选的在线更新合同。",
-		"- [证伪路径] 机械归约：W-0001 的静态结论不能通过加约束推出逐样本更新保证。",
-		"- [证伪路径] 换名检测：候选改变了 prediction/update chronology，不是术语替换。",
+		"- [证伪路径] 直接占据：W-0001 §1.1 Eq. (4) 已直接占据逐标签更新在线 conformal 阈值的方法事实，§2.1 Theorem 1 已直接占据 retrospective coverage；这两项不得作为候选新颖性。",
+		"- [证伪路径] 机械归约：W-0001 §1.1 Eq. (4) 与 §2.1 Theorem 1 都没有定义候选的比较器预算对齐和 predict-before-update 评估合同，仅由该文不能机械推出该评估责任。",
+		"- [证伪路径] 换名检测：候选只能声称可执行的评估合同，不能把 W-0001 的在线 conformal 方法换名为新算法。",
 		"",
 		"## N0 评估综合",
 		"",
 		"| 近邻 ID | 距离 | N0 | 关键观察 |",
 		"|---|---|---|---|",
-		"| W-0001 | direct method neighbor | N0-4C | Table 2 leaves the chronology responsibility open. |",
+		"| W-0001 | direct method neighbor | N0-4C | §1.1 Eq. (4) / §2.1 Theorem 1 occupy the method and coverage facts, but do not specify the candidate's executable comparator-parity evaluation contract. |",
 		"",
 		"## N0 裁决",
 		"",
@@ -243,6 +291,19 @@ async function repairEpochOneFixture(root: string): Promise<string> {
 
 	const manifestPath = path.join(root, "audit_manifest.json");
 	const manifest = await readJson(manifestPath);
+	const executableEvidence: Array<[string, string]> = [
+		["checks/theory_witness.py", "EXECUTABLE_TEST"],
+		["theory_witnesses/minimal_positive.txt", "TEST_OUTPUT"],
+		["theory_witnesses/nonzero_nuisance.txt", "TEST_OUTPUT"],
+		["theory_witnesses/boundary_or_limit.txt", "TEST_OUTPUT"],
+		["theory_witnesses/premise_removal.txt", "TEST_OUTPUT"],
+		["theory_witnesses/random_property.txt", "TEST_OUTPUT"],
+	];
+	for (const [relative, role] of executableEvidence) {
+		if (!(manifest.entries ?? []).some((entry: JsonObject) => entry.path === relative)) {
+			manifest.entries.push({ path: relative, role, sha256: "" });
+		}
+	}
 	for (const entry of manifest.entries ?? []) entry.sha256 = await fileSha(root, entry.path);
 	manifest.claim_bundle_sha256 = canonicalBundle(manifest.entries);
 	await writeJson(manifestPath, manifest);
@@ -264,6 +325,13 @@ async function applyLayeredEvidence(root: string, source: string): Promise<void>
 	const sourceIndex = POSITIVE_STATE_SEQUENCE.indexOf(source as never);
 	const claimIndex = POSITIVE_STATE_SEQUENCE.indexOf("K_CLAIM_REGISTER" as never);
 	const collisionIndex = POSITIVE_STATE_SEQUENCE.indexOf("SYNTHESIZE_COLLISION" as never);
+	const reviewedIndex = POSITIVE_STATE_SEQUENCE.indexOf("DIRECTION_LOCK" as never);
+	if (sourceIndex < reviewedIndex) {
+		await rm(path.join(root, "independent_audit.json"), { force: true });
+		await rm(path.join(root, "review_artifacts"), { recursive: true, force: true });
+	} else if (source === "FINAL_VALIDITY_AUDIT") {
+		await rm(path.join(root, "review_artifacts", "epoch-2.json"), { force: true });
+	}
 	if (sourceIndex < claimIndex) {
 		await writeJson(path.join(root, "literature_claim_registry.json"), {
 			schema_version: "2.0",
@@ -342,6 +410,12 @@ async function createEpochTwo(root: string): Promise<string> {
 		["implementation/online_algorithm.py", "IMPLEMENTATION"],
 		["postcompute/protocol_contract.json", "PROTOCOL_CONTRACT"],
 		["test_outputs/online_chronology_pass.json", "TEST_OUTPUT"],
+		["checks/theory_witness.py", "EXECUTABLE_TEST"],
+		["theory_witnesses/minimal_positive.txt", "TEST_OUTPUT"],
+		["theory_witnesses/nonzero_nuisance.txt", "TEST_OUTPUT"],
+		["theory_witnesses/boundary_or_limit.txt", "TEST_OUTPUT"],
+		["theory_witnesses/premise_removal.txt", "TEST_OUTPUT"],
+		["theory_witnesses/random_property.txt", "TEST_OUTPUT"],
 	];
 	const entries = await Promise.all(roles.map(async ([relative, role]) => ({
 		path: relative,

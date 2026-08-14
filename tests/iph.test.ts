@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { AgentRegistry } from "@oh-my-pi/pi-coding-agent";
 import {
 	captureProtectedSnapshot,
 	auditSystemTopology,
@@ -16,6 +17,8 @@ import {
 	inspectSpecialistCompletion,
 	mutableArtifactConflicts,
 	nodeBriefing,
+	isSanctionedReviewerTask,
+	liveReviewerIdentity,
 	recordSubagentLifecycle,
 	N0_REQUIRED_NEXT_ACTIONS,
 	POSITIVE_STATE_SEQUENCE,
@@ -99,6 +102,28 @@ describe("M3 control-plane routing", () => {
 		expect(briefing.examples.valid).toContain("NOT_QUALIFIED");
 		expect(briefing.examples.invalid).toContain("atomic/full-text claim");
 		expect(briefing.completionProof.join(" ")).toContain("formally completed");
+		expect(briefing.outputContract.failureClosure.substantiveFail).toContain("INVALID+STOP");
+		expect(briefing.outputContract.failureClosure.capabilityUnavailable).toContain("BLOCKED+STOP");
+		expect(briefing.completionProof.join(" ").toLowerCase()).toContain("narration alone is not completion");
+	});
+
+	test("authorizes only the gate-required reviewer task to append review evidence", () => {
+		const state = { active_state: "INDEPENDENT_REVIEW" } as never;
+		expect(isSanctionedReviewerTask(state, {
+			tasks: [{ name: "IndependentReview", agent: "iph-reviewer", task: "Audit the frozen bundle." }],
+		})).toBeTrue();
+		expect(isSanctionedReviewerTask(state, {
+			tasks: [{ name: "WrongRole", agent: "task", task: "Write an audit." }],
+		})).toBeFalse();
+		expect(isSanctionedReviewerTask(state, {
+			tasks: [
+				{ name: "Review", agent: "iph-reviewer", task: "Audit." },
+				{ name: "Mixed", agent: "task", task: "Do unrelated work." },
+			],
+		})).toBeFalse();
+		expect(isSanctionedReviewerTask({ active_state: "VALIDITY_AUDIT" } as never, {
+			tasks: [{ name: "PrematureReview", agent: "iph-reviewer", task: "Write an audit." }],
+		})).toBeFalse();
 	});
 
 	test("binds gate assignments to their completion state before mutation", () => {
@@ -496,6 +521,30 @@ describe("compute preflight", () => {
 });
 
 describe("runtime-bound reviewer provenance", () => {
+	test("authenticates a headless in-memory reviewer from the live agent registry", () => {
+		const sessionManager = {};
+		const session = { sessionManager } as never;
+		const registry = AgentRegistry.global();
+		const ref = registry.register({
+			id: "omp-headless-reviewer",
+			displayName: "iph-reviewer",
+			kind: "sub",
+			status: "running",
+			session,
+			sessionFile: null,
+		});
+		try {
+			expect(liveReviewerIdentity(sessionManager, "headless-thread")).toEqual({
+				reviewerAgentId: "omp-headless-reviewer",
+				reviewerThreadId: "headless-thread",
+				sessionFile: "in-memory:omp-headless-reviewer",
+			});
+			expect(liveReviewerIdentity({}, "headless-thread")).toBeUndefined();
+		} finally {
+			registry.unregister(ref.id, ref);
+		}
+	});
+
 	test("accepts only an active iph-reviewer lifecycle record for the exact session", () => {
 		clearRuntimeRegistryForTests();
 		recordSubagentLifecycle({
@@ -587,6 +636,57 @@ describe("runtime-bound reviewer provenance", () => {
 			await rm(root, { recursive: true, force: true });
 		}
 	});
+
+	test("commits a substantive reviewer FAIL as same-state INVALID plus STOP", async () => {
+		const skillDir = resolveSkillDir();
+		expect(skillDir).toBeTruthy();
+		const root = await mkdtemp(path.join(tmpdir(), "iph-runtime-review-fail-"));
+		try {
+			await cp(path.join(skillDir!, "tests", "fixtures", "minimal-valid-v3"), root, { recursive: true });
+			await rm(path.join(root, ".workflow_stop.lock"), { force: true });
+			const statePath = path.join(root, "workflow_state.json");
+			const state = JSON.parse(await readFile(statePath, "utf8"));
+			state.active_state = "INDEPENDENT_REVIEW";
+			state.resume_state = "INDEPENDENT_REVIEW";
+			state.validity_level = "V2";
+			state.independent_audit = {};
+			delete state.review_artifact_sha256;
+			delete state.artifacts.independent_audit;
+			await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+			await mkdir(path.join(root, "review_artifacts"), { recursive: true });
+			await writeFile(path.join(root, "review_artifacts", "epoch-1-fail.json"), `${JSON.stringify({
+				schema_version: "2.0",
+				capability_available: true,
+				author_agent_ids: ["author-m3"],
+				verdict: "FAIL",
+				required_remediation: "Correct the false literature locator and add the missing executable theory witness, then request a fresh independent review.",
+				findings: ["The frozen evidence bundle contains a false locator and a missing executable witness."],
+			}, null, 2)}\n`);
+
+			const result = await sealRuntimeReview(
+				root,
+				"FAIL",
+				"review_artifacts/epoch-1-fail.json",
+				false,
+				{
+					reviewerAgentId: "omp-reviewer-fail-1",
+					reviewerThreadId: "omp-review-thread-fail-1",
+					sessionFile: "in-memory:omp-reviewer-fail-1",
+				},
+			);
+			expect(result.exitCode, JSON.stringify(result)).toBe(1);
+			expect(result.stdout).toContain("EXPECTED_REVIEW_FAIL_COMMIT");
+			expect(await inspectStopLock(root)).toMatchObject({ active: true });
+			const sealedState = JSON.parse(await readFile(statePath, "utf8"));
+			expect(sealedState.active_state).toBe("INDEPENDENT_REVIEW");
+			expect(sealedState.validity_level).toBe("V2");
+			expect(sealedState.next_required_action).toContain("Correct the false literature locator");
+			expect(sealedState.review_artifact_sha256).toMatch(/^[0-9a-f]{64}$/);
+			expect(sealedState.independent_audit.reviewer_agent_id).toBe("omp-reviewer-fail-1");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("protected artifact rollback", () => {
@@ -627,6 +727,22 @@ describe("protected artifact rollback", () => {
 			await writeFile(path.join(root, "review_artifacts", "epoch-2.json"), "new-review\n");
 			expect(await restoreProtectedSnapshot(snapshot)).toEqual([]);
 			expect(await readFile(path.join(root, "review_artifacts", "epoch-2.json"), "utf8")).toBe("new-review\n");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("preserves a new reviewer artifact across the parent task snapshot", async () => {
+		const root = await mkdtemp(path.join(tmpdir(), "iph-review-parent-task-"));
+		try {
+			await mkdir(path.join(root, "review_artifacts"));
+			await writeFile(path.join(root, "workflow_state.json"), "state-original\n");
+			await writeFile(path.join(root, "lifecycle_state.json"), "lifecycle-original\n");
+			await writeFile(path.join(root, "independent_audit.json"), "{}\n");
+			const snapshot = await captureProtectedSnapshot(root, true, true);
+			await writeFile(path.join(root, "review_artifacts", "epoch-1-fail.json"), "{\"verdict\":\"FAIL\"}\n");
+			expect(await restoreProtectedSnapshot(snapshot)).toEqual([]);
+			expect(await readFile(path.join(root, "review_artifacts", "epoch-1-fail.json"), "utf8")).toContain("FAIL");
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

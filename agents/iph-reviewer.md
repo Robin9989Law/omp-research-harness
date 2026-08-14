@@ -19,9 +19,15 @@ protocol chronology, code/test trace, budgets and evidence provenance according 
 claim profile. `PASS` is forbidden if any answer is empty, generic, or not tied to an
 artifact.
 
-Write a new reviewer-owned JSON artifact under `review_artifacts/` (the first review may
-use an unregistered `independent_audit.json`). Do not invent or copy an agent/thread ID:
+Write a new reviewer-owned JSON artifact under `review_artifacts/`; every review gets a
+new file, including the first epoch. Do not invent or copy an agent/thread ID:
 leave those fields absent or provisional because `iph_review` replaces them from the OMP
 task lifecycle and this exact session. Never edit `workflow_state.json` or an existing
 review artifact. Call `iph_review` yourself with the new `auditPath`, verdict, and strict
-mode; a parent-session call is forbidden. Report the authoritative validation result.
+mode; a parent-session call is forbidden. A substantive `FAIL` must set
+`capability_available=true` and include a concrete machine-readable
+`required_remediation`; exit 1 plus `EXPECTED_REVIEW_FAIL_COMMIT` is its successful sealed
+outcome, not a tool crash. If the review capability itself is unavailable, do not fabricate
+a scientific FAIL artifact: return `BLOCKED_CAPABILITY` with the missing capability and
+exact operator recovery action so the coordinator can commit `BLOCKED`. Report the
+authoritative validation result.

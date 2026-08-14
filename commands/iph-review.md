@@ -8,3 +8,7 @@ the review artifact and must never call `iph_review`: the reviewer calls it insi
 task session, and the extension binds the lifecycle agent ID plus session ID before the
 authoritative strict validation. The parent may only call `iph_validate` afterward. If
 capability is unavailable, record BLOCKED_CAPABILITY; never synthesize a PASS.
+For a substantive FAIL, require `required_remediation` and treat the reviewer's
+`EXPECTED_REVIEW_FAIL_COMMIT`/exit 1 as a successfully sealed INVALID+STOP gate. For
+BLOCKED_CAPABILITY, the parent must commit one `iph_advance(to=BLOCKED)` transaction with
+the exact operator recovery action; narration alone is not closure.

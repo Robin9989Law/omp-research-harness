@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { lstat, mkdir, open, readFile, readdir, readlink, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import { AgentRegistry, type ExtensionAPI, type ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 
 export const EXIT_STATUS = {
 	0: "READY",
@@ -333,6 +333,7 @@ const AGENT_NATIVE_EXECUTION_POLICY = [
 	"Once required artifacts exist and the authoritative validator is READY, complete the gate task formally before optional exploration; do not spend the identity-bearing completion window on unrelated searches.",
 	"If optional evidence could materially change the verdict, stop safely with the exact open question and continue in a new bounded task; preserve drafts but never reuse a timed-out or stale specialist identity.",
 	"Use event-flow-manager only at a decision checkpoint after high-volume lifecycle events have accumulated; for one to three simple tasks, wait directly, and never treat an initial-fanout snapshot as a final completion summary.",
+	"Close specialist failure in machine state: a substantive FAIL is sealed and remains at the same gate with INVALID+STOP and an exact remediation; a machine-readable BLOCKED_CAPABILITY result makes the coordinator commit BLOCKED+STOP. Narration alone is never closure.",
 ];
 
 const NODE_EXAMPLES: Record<string, NodeExample> = {
@@ -403,15 +404,30 @@ export function nodeBriefing(
 			stateArtifacts: plan.stateArtifacts,
 			immutableArtifacts: plan.immutableArtifacts,
 			semanticInputs: targetSemanticInputs(plan.target),
+			failureClosure: {
+				substantiveFail: "Seal the reviewer-owned FAIL artifact with required_remediation; remain at the current gate, preserve V-level, and require INVALID+STOP with next_required_action set to that remediation.",
+				capabilityUnavailable: "Require a machine-readable BLOCKED_CAPABILITY result, preserve its task provenance, then commit BLOCKED+STOP with a concrete operator recovery action; do not disguise unavailable capability as a scientific FAIL.",
+			},
 		},
 		examples: example,
 		completionProof: [
 			"All contracted drafts exist and their semantics match the current evidence layer.",
 			"Authoritative strict validator is READY (warnings remain explicit).",
 			...(plan.specialist ? ["Specialist lifecycle is formally completed and M3 records ACCEPTED or OVERRIDDEN with rationale."] : []),
-			`Exactly one transaction commits ${activeState} -> ${plan.target}; optional exploration remains a separate bounded task.`,
+			`Exactly one machine-state closure occurs: ${activeState} -> ${plan.target}; or a sealed substantive FAIL keeps ${activeState} with INVALID+STOP; or unavailable capability enters BLOCKED+STOP. Narration alone is not completion.`,
 		],
 	};
+}
+
+export function isSanctionedReviewerTask(
+	state: WorkflowState | undefined,
+	input: Record<string, unknown>,
+): boolean {
+	const plan = transitionPlanForState(state);
+	if (plan?.specialist !== REVIEWER_AGENT) return false;
+	const tasks = Array.isArray(input.tasks) ? input.tasks : [];
+	return tasks.length === 1 && Boolean(tasks[0]) && typeof tasks[0] === "object" && !Array.isArray(tasks[0]) &&
+		text((tasks[0] as Record<string, unknown>).agent) === REVIEWER_AGENT;
 }
 
 const TRANSITION_FILES = [WORKFLOW_FILE, LIFECYCLE_FILE, STOP_LOCK_FILE, VALIDATION_LOG_FILE] as const;
@@ -777,6 +793,26 @@ export function runtimeReviewerIdentity(
 	const record = runtimeRegistry().get(normalized);
 	if (!record || record.agent !== REVIEWER_AGENT || record.status !== "started") return undefined;
 	return { reviewerAgentId: record.id, reviewerThreadId: threadId, sessionFile: normalized };
+}
+
+export function liveReviewerIdentity(
+	sessionManager: unknown,
+	threadId: string | undefined,
+): ReviewerRuntimeIdentity | undefined {
+	if (!sessionManager || !threadId) return undefined;
+	const matches = AgentRegistry.global().list().filter(ref =>
+		ref.kind === "sub" &&
+		ref.displayName === REVIEWER_AGENT &&
+		ref.status === "running" &&
+		ref.session?.sessionManager === sessionManager
+	);
+	if (matches.length !== 1) return undefined;
+	const ref = matches[0]!;
+	return {
+		reviewerAgentId: ref.id,
+		reviewerThreadId: threadId,
+		sessionFile: ref.sessionFile ?? `in-memory:${ref.id}`,
+	};
 }
 
 function resolveRoot(cwd: string, requested?: string): string {
@@ -1685,7 +1721,8 @@ export function classifyComputeCommand(command: string): string | undefined {
 }
 
 function reviewerIdentityForContext(ctx: ExtensionContext): ReviewerRuntimeIdentity | undefined {
-	return runtimeReviewerIdentity(ctx.sessionManager.getSessionFile(), ctx.sessionManager.getSessionId());
+	return liveReviewerIdentity(ctx.sessionManager, ctx.sessionManager.getSessionId()) ??
+		runtimeReviewerIdentity(ctx.sessionManager.getSessionFile(), ctx.sessionManager.getSessionId());
 }
 
 function inputPaths(input: Record<string, unknown>): string[] {
@@ -1761,8 +1798,8 @@ export async function sealRuntimeReview(
 	signal?: AbortSignal,
 ): Promise<IphRunResult> {
 	const statePath = path.join(root, WORKFLOW_FILE);
-	const originalState = await readFile(statePath).catch(() => undefined);
-	if (!originalState) return blockedResult(root, `${WORKFLOW_FILE} is missing or unreadable`);
+	const transaction = await captureFileTransaction(root).catch(() => undefined);
+	if (!transaction) return blockedResult(root, `${WORKFLOW_FILE} is missing or protected transaction state is unreadable`);
 	const state = await readWorkflow(root);
 	if (!state) return blockedResult(root, `${WORKFLOW_FILE} must be a JSON object`);
 	const active = text(state.active_state);
@@ -1808,6 +1845,10 @@ export async function sealRuntimeReview(
 			"PASS requires all four substantive review_answers (at least 32 characters each and tied to a named artifact, manifest, hash, log, or test)",
 		);
 	}
+	const requiredRemediation = text(audit.required_remediation).trim();
+	if (verdict === "FAIL" && requiredRemediation.length < 16) {
+		return blockedResult(root, "FAIL requires a machine-readable required_remediation of at least 16 characters");
+	}
 	const authors = Array.isArray(audit.author_agent_ids)
 		? audit.author_agent_ids.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
 		: [];
@@ -1834,6 +1875,7 @@ export async function sealRuntimeReview(
 	if (verdict === "PASS" && audit.capability_available === true) {
 		state.validity_level = active === "INDEPENDENT_REVIEW" ? "V3" : "V4";
 	}
+	if (verdict === "FAIL") state.next_required_action = requiredRemediation;
 	delete state.review_artifact_sha256;
 	state.updated_at = new Date().toISOString();
 
@@ -1853,19 +1895,35 @@ export async function sealRuntimeReview(
 		);
 		if (registered.exitCode !== 0) {
 			await atomicWriteBytes(auditPath, originalAudit);
-			await atomicWriteBytes(statePath, originalState);
+			await restoreFileTransaction(transaction);
 			return registered;
 		}
 		const validated = await runIph(root, "validate", strict ? ["--strict-new-checks"] : [], signal);
+		const expectedExit = verdict === "PASS" ? 0 : 1;
+		const failLockPresent = verdict !== "FAIL" || existsSync(path.join(root, STOP_LOCK_FILE));
+		if (validated.exitCode !== expectedExit || !failLockPresent) {
+			await atomicWriteBytes(auditPath, originalAudit);
+			await restoreFileTransaction(transaction);
+			return {
+				status: "ERROR",
+				exitCode: 70,
+				stdout: "",
+				stderr: `review transaction expected exit ${expectedExit}${verdict === "FAIL" ? " with STOP lock" : ""}, observed exit ${validated.exitCode}${failLockPresent ? "" : " without STOP lock"}; transaction rolled back`,
+				root,
+			};
+		}
 		validated.stdout = [
 			`runtime-bound review sealed: reviewer=${identity.reviewerAgentId} thread=${identity.reviewerThreadId} artifact=${auditRelative}`,
+			verdict === "FAIL"
+				? `EXPECTED_REVIEW_FAIL_COMMIT preserved ${active}/${validity} with STOP; recovery=${requiredRemediation}`
+				: "",
 			registered.stdout.trim(),
 			validated.stdout.trim(),
 		].filter(Boolean).join("\n");
 		return validated;
 	} catch (error) {
 		await atomicWriteBytes(auditPath, originalAudit).catch(() => undefined);
-		await atomicWriteBytes(statePath, originalState).catch(() => undefined);
+		await restoreFileTransaction(transaction).catch(() => undefined);
 		return {
 			status: "ERROR",
 			exitCode: 70,
@@ -2489,6 +2547,8 @@ export default function iphExtension(pi: ExtensionAPI) {
 		const sanitizedSpecialistTask = event.toolName === "task"
 			? sanitizeSpecialistTaskInput(event.input)
 			: undefined;
+		const effectiveTaskInput = (sanitizedSpecialistTask ?? event.input) as Record<string, unknown>;
+		const sanctionedReviewerTask = event.toolName === "task" && isSanctionedReviewerTask(state, effectiveTaskInput);
 		const inspectedLifecycle = await inspectLifecycleState(root, stageForState(state));
 		const lifecycleIssues = inspectedLifecycle.issues;
 		if (lifecycleIssues.length > 0) {
@@ -2518,17 +2578,15 @@ export default function iphExtension(pi: ExtensionAPI) {
 					};
 				}
 				if (isReviewTarget(relative)) {
-					if (reviewIsRegistered(state)) {
-						const absolute = path.isAbsolute(target) ? path.normalize(target) : path.resolve(ctx.cwd, target);
-						if (!reviewerIdentity || existsSync(absolute) || !relative.startsWith(`${REVIEW_DIR}/`)) {
-							return {
-								block: true,
-								reason: "Registered review artifacts are immutable; an active iph-reviewer may only create a new file under review_artifacts/.",
-							};
-						}
-					}
 					if (!reviewerIdentity) {
 						return { block: true, reason: "Only the iph-reviewer subagent may author review artifacts." };
+					}
+					const absolute = path.isAbsolute(target) ? path.normalize(target) : path.resolve(ctx.cwd, target);
+					if (existsSync(absolute) || !relative.startsWith(`${REVIEW_DIR}/`)) {
+						return {
+							block: true,
+							reason: "Existing review artifacts are immutable; an active iph-reviewer may only create a new file under review_artifacts/.",
+						};
 					}
 				}
 			}
@@ -2563,13 +2621,12 @@ export default function iphExtension(pi: ExtensionAPI) {
 
 		if (!IPH_TOOL_NAMES.has(event.toolName)) {
 			try {
-				const registered = reviewIsRegistered(state);
 				pendingSnapshots.set(
 					`${ctx.sessionManager.getSessionId()}\0${event.toolCallId}`,
 					await captureProtectedSnapshot(
 						root,
-						registered || !reviewerIdentity,
-						registered && Boolean(reviewerIdentity),
+						true,
+						Boolean(reviewerIdentity) || sanctionedReviewerTask,
 						text(state.artifacts?.independent_audit),
 					),
 				);
@@ -2581,8 +2638,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 			}
 		}
 		if (event.toolName === "task") {
-			const effectiveInput = (sanitizedSpecialistTask ?? event.input) as Record<string, unknown>;
-			const tasks = Array.isArray(effectiveInput.tasks) ? effectiveInput.tasks : [];
+			const tasks = Array.isArray(effectiveTaskInput.tasks) ? effectiveTaskInput.tasks : [];
 			const plan = transitionPlanForState(state);
 			const agents = new Set(tasks.flatMap(item => {
 				if (!item || typeof item !== "object" || Array.isArray(item)) return [];
