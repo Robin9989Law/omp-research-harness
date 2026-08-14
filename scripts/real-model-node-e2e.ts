@@ -1,7 +1,7 @@
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import * as path from "node:path";
-import { resolveSkillDir } from "../extensions/iph";
+import { resolveSkillDir, transitionPlanForState } from "../extensions/iph";
 
 type JsonObject = Record<string, any>;
 
@@ -60,7 +60,7 @@ async function modelChanges(root: string, sinceMs: number): Promise<JsonObject[]
 }
 
 async function toolCalls(root: string, sinceMs: number): Promise<JsonObject[]> {
-	const calls: JsonObject[] = [];
+	const counts = new Map<string, JsonObject>();
 	for (const file of await jsonFiles(root)) {
 		const metadata = await stat(file).catch(() => undefined);
 		if (!metadata || metadata.mtimeMs < sinceMs) continue;
@@ -71,7 +71,11 @@ async function toolCalls(root: string, sinceMs: number): Promise<JsonObject[]> {
 				if (entry.type !== "message" || entry.message?.role !== "assistant") continue;
 				for (const content of Array.isArray(entry.message.content) ? entry.message.content : []) {
 					if (content?.type === "toolCall" && typeof content.name === "string") {
-						calls.push({ file: path.relative(root, file), name: content.name });
+						const relativeFile = path.relative(root, file);
+						const key = `${relativeFile}\0${content.name}`;
+						const existing = counts.get(key);
+						if (existing) existing.count += 1;
+						else counts.set(key, { file: relativeFile, name: content.name, count: 1 });
 					}
 				}
 			} catch {
@@ -79,7 +83,32 @@ async function toolCalls(root: string, sinceMs: number): Promise<JsonObject[]> {
 			}
 		}
 	}
-	return calls;
+	return [...counts.values()];
+}
+
+async function sessionInits(root: string, sinceMs: number): Promise<JsonObject[]> {
+	const sessions: JsonObject[] = [];
+	for (const file of await jsonFiles(root)) {
+		const metadata = await stat(file).catch(() => undefined);
+		if (!metadata || metadata.mtimeMs < sinceMs) continue;
+		for (const line of (await readFile(file, "utf8")).split("\n")) {
+			if (!line.trim()) continue;
+			try {
+				const entry = JSON.parse(line) as JsonObject;
+				if (entry.type === "session_init" && typeof entry.agent === "string") {
+					sessions.push({
+						file: path.relative(root, file),
+						agent: entry.agent,
+						modelRole: entry.modelRole ?? null,
+						resolvedModel: entry.resolvedModel ?? null,
+					});
+				}
+			} catch {
+				// Non-JSON diagnostics cannot establish subagent identity.
+			}
+		}
+	}
+	return sessions;
 }
 
 const EDGE_TARGETS: Record<string, string> = {
@@ -94,9 +123,10 @@ const EDGE_TARGETS: Record<string, string> = {
 const fixtureRoot = path.resolve(option("--fixture-root") ?? "");
 assert(
 	fixtureRoot && await exists(path.join(fixtureRoot, "independent_review", "workflow_state.json")),
-	"usage: bun scripts/real-model-node-e2e.ts --fixture-root <fresh-fixture-root> [--run-root <new-directory>] [--max-time 30m] [--dry-run]",
+	"usage: bun scripts/real-model-node-e2e.ts --fixture-root <fresh-fixture-root> [--all-nodes] [--run-root <new-directory>] [--max-time 30m] [--dry-run]",
 );
 const dryRun = process.argv.includes("--dry-run");
+const allNodes = process.argv.includes("--all-nodes");
 const nodeMaxTime = option("--max-time") ?? "30m";
 const requestedRunRoot = option("--run-root");
 const runRoot = requestedRunRoot
@@ -109,9 +139,13 @@ if (requestedRunRoot) {
 const researchRoot = path.join(runRoot, "research");
 const logsRoot = path.join(runRoot, "logs");
 const sessionsEvidenceRoot = path.join(runRoot, "sessions");
-await cp(path.join(fixtureRoot, "independent_review"), researchRoot, { recursive: true });
+if (allNodes) await mkdir(researchRoot, { recursive: true });
+else await cp(path.join(fixtureRoot, "independent_review"), researchRoot, { recursive: true });
 await mkdir(logsRoot, { recursive: true });
 await mkdir(sessionsEvidenceRoot, { recursive: true });
+const fixtureMatrix = JSON.parse(await readFile(path.join(fixtureRoot, "matrix.json"), "utf8")) as JsonObject;
+const fixtureCases = Array.isArray(fixtureMatrix.results) ? fixtureMatrix.results as JsonObject[] : [];
+assert(fixtureCases.length === 22, `fixture matrix must contain 22 positive edges, found ${fixtureCases.length}`);
 
 const skillDir = resolveSkillDir();
 assert(skillDir, "authoritative IPH skill checkout is unavailable");
@@ -149,6 +183,7 @@ const evidence: JsonObject = {
 	reviewerRole: modelRoles.review,
 	eventRole: modelRoles.event,
 	nodeMaxTime,
+	mode: allNodes ? "all-nodes-isolated" : "late-nodes-continuous",
 	nodes: [],
 };
 
@@ -164,17 +199,32 @@ const commonPrompt = [
 
 try {
 	if (dryRun) {
-		const state = JSON.parse(await readFile(path.join(researchRoot, "workflow_state.json"), "utf8"));
-		assert(state.active_state === "INDEPENDENT_REVIEW", "dry-run fixture does not start at Node 17");
-		process.stdout.write(`real_model_node_e2e=DRY_RUN_READY nodes=17-22 research_root=${researchRoot}\n`);
-		process.stdout.write(`next_command=bun scripts/real-model-node-e2e.ts --fixture-root ${fixtureRoot}\n`);
+		if (!allNodes) {
+			const state = JSON.parse(await readFile(path.join(researchRoot, "workflow_state.json"), "utf8"));
+			assert(state.active_state === "INDEPENDENT_REVIEW", "dry-run fixture does not start at Node 17");
+		}
+		const nodeRange = allNodes ? "1-22" : "17-22";
+		process.stdout.write(`real_model_node_e2e=DRY_RUN_READY nodes=${nodeRange} research_root=${researchRoot}\n`);
+		process.stdout.write(`next_command=bun scripts/real-model-node-e2e.ts --fixture-root ${fixtureRoot}${allNodes ? " --all-nodes" : ""}\n`);
 		process.exitCode = 0;
 	} else {
-		for (let node = 17; node <= 22; node += 1) {
-			const before = JSON.parse(await readFile(path.join(researchRoot, "workflow_state.json"), "utf8")) as JsonObject;
+		const firstNode = allNodes ? 1 : 17;
+		for (let node = firstNode; node <= 22; node += 1) {
+			const fixtureCase = fixtureCases[node - 1]!;
+			const expectedSource = String(fixtureCase.source ?? "");
+			const nodeResearchRoot = allNodes
+				? path.join(researchRoot, `node-${String(node).padStart(2, "0")}-${expectedSource.toLowerCase()}`)
+				: researchRoot;
+			if (allNodes) {
+				await cp(path.join(fixtureRoot, expectedSource.toLowerCase()), nodeResearchRoot, { recursive: true });
+			}
+			const before = JSON.parse(await readFile(path.join(nodeResearchRoot, "workflow_state.json"), "utf8")) as JsonObject;
 			const source = String(before.active_state ?? "");
-			const target = EDGE_TARGETS[source];
+			assert(source === expectedSource, `node ${node} fixture expected ${expectedSource}, found ${source}`);
+			const target = allNodes ? String(fixtureCase.target ?? "") : EDGE_TARGETS[source];
 			assert(target, `node ${node} has no registered target from ${source}`);
+			const transitionPlan = transitionPlanForState(before);
+			assert(transitionPlan?.target === target, `node ${node} transition plan drift: ${transitionPlan?.target} != ${target}`);
 			const logPath = path.join(logsRoot, `node-${node}-${source.toLowerCase()}.log`);
 			const startedAtMs = Date.now();
 			process.stdout.write(`REAL_NODE_START node=${node} source=${source} target=${target} log=${logPath}\n`);
@@ -188,7 +238,7 @@ try {
 				"--no-lsp",
 				"--plugin-dir", projectRoot,
 				"--extension", extensionPath,
-				"--cwd", researchRoot,
+				"--cwd", nodeResearchRoot,
 				"--session-dir", runtimeSessions,
 				"--model", "minimax-code-cn/MiniMax-M3",
 				"--thinking", "high",
@@ -214,19 +264,20 @@ try {
 				new Response(child.stderr).text(),
 			]);
 			await writeFile(logPath, `${stdout}${stderr ? `\n[stderr]\n${stderr}` : ""}`);
-			const after = JSON.parse(await readFile(path.join(researchRoot, "workflow_state.json"), "utf8")) as JsonObject;
+			const after = JSON.parse(await readFile(path.join(nodeResearchRoot, "workflow_state.json"), "utf8")) as JsonObject;
 			const traces = await modelChanges(runtimeRoot, startedAtMs);
 			const calls = await toolCalls(runtimeRoot, startedAtMs);
+			const subagentSessions = await sessionInits(runtimeRoot, startedAtMs);
 			await cp(runtimeSessions, sessionsEvidenceRoot, { recursive: true, force: true });
-			const stopLock = await exists(path.join(researchRoot, ".workflow_stop.lock"));
+			const stopLock = await exists(path.join(nodeResearchRoot, ".workflow_stop.lock"));
 			const validation = Bun.spawn([
 				"python3",
 				path.join(skillDir, "scripts", "validate_all.py"),
-				"--root", researchRoot,
-				"--state", path.join(researchRoot, "workflow_state.json"),
+				"--root", nodeResearchRoot,
+				"--state", path.join(nodeResearchRoot, "workflow_state.json"),
 				"--current-year", "2026",
 				"--strict-new-checks",
-			], { cwd: researchRoot, stdout: "pipe", stderr: "pipe", env: { ...process.env, IPH_NO_LOCK: "1" } });
+			], { cwd: nodeResearchRoot, stdout: "pipe", stderr: "pipe", env: { ...process.env, IPH_NO_LOCK: "1" } });
 			const [validatorExit, validatorStdout, validatorStderr] = await Promise.all([
 				validation.exited,
 				new Response(validation.stdout).text(),
@@ -244,6 +295,8 @@ try {
 				stopLock,
 				modelChanges: traces,
 				toolCalls: calls,
+				subagentSessions,
+				researchRoot: path.relative(runRoot, nodeResearchRoot),
 				log: path.relative(runRoot, logPath),
 			};
 			evidence.nodes.push(nodeEvidence);
@@ -255,6 +308,13 @@ try {
 			assert(calls.some(item => item.name === "iph_status"), `node ${node} did not call iph_status`);
 			assert(calls.some(item => item.name === "iph_transition_plan"), `node ${node} did not call iph_transition_plan`);
 			assert(calls.some(item => item.name === "iph_advance"), `node ${node} did not close its edge through iph_advance`);
+			if (transitionPlan.specialist) {
+				assert(calls.some(item => item.name === "task"), `node ${node} did not dispatch ${transitionPlan.specialist}`);
+				assert(
+					subagentSessions.some(item => item.agent === transitionPlan.specialist),
+					`node ${node} lacks an authenticated ${transitionPlan.specialist} session`,
+				);
+			}
 			if (node === 17 || node === 21) {
 				const decisionEvidence = JSON.stringify(after.decision_log ?? []);
 				const reviewerTrace = traces.some(item => String(item.model).includes("deepseek-v4-pro"));
@@ -265,7 +325,8 @@ try {
 		}
 		evidence.completedAt = new Date().toISOString();
 		await writeFile(path.join(runRoot, "evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
-		process.stdout.write(`real_model_node_e2e=READY nodes=17-22 final=COMPLETE evidence=${path.join(runRoot, "evidence.json")}\n`);
+		const nodeRange = allNodes ? "1-22" : "17-22";
+		process.stdout.write(`real_model_node_e2e=READY nodes=${nodeRange} final=COMPLETE evidence=${path.join(runRoot, "evidence.json")}\n`);
 	}
 } finally {
 	await rm(runtimeRoot, { recursive: true, force: true });

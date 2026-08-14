@@ -96,10 +96,12 @@ state hash、STOP lock、validation log 和工具调用序列，回到对应层�
 ```text
 bun run test:nodes -- --pdf-cache <pinned-pdf>
 bun run test:models -- --fixture-root <fresh-root>
+bun run test:models -- --fixture-root <fresh-root> --all-nodes
 ```
 
 它分别证明 22 个源状态都能被权威 validator 接受、N0-1/N0-2/N0-3 不会被强推为正结果、
-以及 Node 18–22 能从明确授权连续提交到 COMPLETE。它不能替代 L5 的真实模型行为测试；两层结果必须分开报告。
+以及 Node 18–22 能从明确授权连续提交到 COMPLETE。`--all-nodes` 是 L5 真实模型的
+22 节点隔离单边回放；确定性与真实模型两层结果必须分开报告。
 
 L6 不把单次成功率当作唯一指标，还记录无效工具调用、token/时延、规则冲突发现率、可复用新洞见和
 validator 拒绝率。测试结果用于删除压制 M3 全局推理的冗余步骤，并保留能提高事实质量和副作用安全的

@@ -484,6 +484,7 @@ export IPH_SKILL_DIR=/absolute/path/to/innovation-proposition-hunting
 bun run check
 bun run test:nodes -- --pdf-cache /absolute/path/to/pinned-W-0001.pdf
 bun run test:models -- --fixture-root /tmp/iph-agent-node-fixtures-full.<id>
+bun run test:models -- --fixture-root /tmp/iph-agent-node-fixtures-full.<id> --all-nodes
 bun run release:check
 omp plugin link .
 omp plugin doctor @prcbooboo/omp-research-harness
@@ -503,6 +504,9 @@ Node 17–22。它使用隔离的临时 OMP runtime，自动批准工具请求�
 `model_change`、session JSONL、state/STOP 和 strict validator 结果；临时认证数据库在结束时删除，
 保留的 session 证据不包含认证数据库。节点默认预算为 30 分钟，可用 `--max-time 45m` 调整。
 先用 `--dry-run` 检查输入，不会调用模型。
+`--all-nodes` 从 matrix 的 22 个 fresh 源状态分别做真实单边回放，并断言每个节点真实调用
+`iph_status`、`iph_transition_plan`、`iph_advance`；科学门还必须留下认证 specialist session，
+review 门额外必须调用 `iph_review`。
 
 ## 相关项目
 
