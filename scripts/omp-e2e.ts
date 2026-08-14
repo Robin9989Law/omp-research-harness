@@ -36,6 +36,7 @@ try {
 		"iph_advance",
 		"iph_bootstrap",
 		"iph_clear_lock",
+		"iph_event_snapshot",
 		"iph_handover",
 		"iph_register_exploration",
 		"iph_repair_artifact_pointer",
@@ -431,7 +432,7 @@ try {
 		isError: false,
 	} satisfies ToolResultEvent, main);
 
-	process.stdout.write("omp_e2e=READY loader=real tools=12 hooks=rollback specialist-schema=sanitized specialist=lifecycle-bound transition=transactional blocked=committed+resumed frozen=decision-log mutable=guarded recovery=artifact-map+versioned-evidence root=nested reviewer=lifecycle\n");
+	process.stdout.write("omp_e2e=READY loader=real tools=13 hooks=rollback specialist-schema=sanitized specialist=lifecycle-bound event-flow=projected transition=transactional blocked=committed+resumed frozen=decision-log mutable=guarded recovery=artifact-map+versioned-evidence root=nested reviewer=lifecycle\n");
 } finally {
 	await rm(root, { recursive: true, force: true });
 }

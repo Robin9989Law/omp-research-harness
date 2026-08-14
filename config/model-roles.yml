@@ -5,4 +5,5 @@ modelRoles:
   atomic: openai-codex/gpt-5.6-sol:high
   collision: openai-codex/gpt-5.6-sol:high
   review: deepseek/deepseek-v4-pro:high
+  event: deepseek/deepseek-v4-flash:low
   commit: minimax-code-cn/MiniMax-M3:high

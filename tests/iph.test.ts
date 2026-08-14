@@ -10,6 +10,7 @@ import {
 	createBootState,
 	EXIT_STATUS,
 	executableText,
+	eventFlowSnapshot,
 	findResearchRoot,
 	inspectStopLock,
 	inspectSpecialistCompletion,
@@ -26,6 +27,7 @@ import {
 	shouldContinueSessionStop,
 	specialistDispositionIssue,
 	transitionPlanForState,
+	transitionGateIssue,
 	validateLifecycleState,
 	verifySkillLock,
 	waitForSpecialistCompletion,
@@ -90,6 +92,13 @@ describe("M3 control-plane routing", () => {
 		expect(briefing.examples.valid).toContain("NOT_QUALIFIED");
 		expect(briefing.examples.invalid).toContain("atomic/full-text claim");
 		expect(briefing.completionProof.join(" ")).toContain("formally completed");
+	});
+
+	test("binds gate assignments to their completion state before mutation", () => {
+		expect(transitionGateIssue("L2_TRIAGE", ["k_set_selected=true"])).toBeUndefined();
+		expect(transitionGateIssue("L2_TRIAGE", ["l2_frozen=true"])).toContain("missing target gate");
+		expect(transitionGateIssue("L2_TRIAGE", ["k_set_selected=true", "l2_frozen=true"])).toContain("belongs to LAYER_DECISION");
+		expect(transitionGateIssue("LAYER_DECISION", ["l2_frozen=true", "architecture_frozen=true"])).toBeUndefined();
 	});
 
 	test("requires an explicit, reasoned disposition without treating specialist completion as authority", () => {
@@ -205,6 +214,12 @@ describe("M3 control-plane routing", () => {
 		expect(inspectSpecialistCompletion(
 			"Impostor", "frontier-auditor", "/tmp/research-events", "RECENT_FRONTIER",
 		).status).toBe("not_observed");
+		const snapshot = eventFlowSnapshot("/tmp/research-events", "RECENT_FRONTIER", "frontier-auditor");
+		expect(snapshot.counts.currentCompleted).toBe(1);
+		expect(snapshot.counts.currentStarted).toBe(0);
+		expect(snapshot.counts.conflicts).toBe(2);
+		expect(snapshot.recommendation).toBe("RECONCILE_CONFLICT");
+		expect(snapshot.stateChangeJustified).toBeFalse();
 	});
 
 	test("covers the complete positive state topology with no contract gaps", () => {

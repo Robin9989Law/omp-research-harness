@@ -12,6 +12,10 @@
   输出合同、最小正反例和 completion proof，减少 M3 因输出不可构造而徘徊。
 - task lifecycle 改为单调事件流：终态不得被延迟/ 重复 `started` 或冲突终态回退，
   乱序终态保留已认证的 research root 与 target 绑定。
+- 新增只读 `event-flow-manager` 与 `iph_event_snapshot`：先确定性投影当前/终态/过期/冲突事件，
+  再由 DeepSeek V4 Flash low 向 M3 提供无副作用的压缩摘要。
+- transition plan 返回精确 target gate assignments；`iph_advance` 在写入前拒绝缺失 gate 或
+  属于未来状态的 gate，修复 L2_TRIAGE 语义误导。
 - 分离 gate closure 与开放探索预算：validator READY 后 specialist 先正式完成；超时 draft
   可由新任务复核续接，但 stale identity 不可用于推进。
 - URL verification 改为证据角色合同而非 distinctness 计数；预印本不得证明同行评审，
@@ -33,7 +37,7 @@
   validate/clear-lock 循环。
 - `iph_status` 和 `iph_transition_plan` 明示 `stopLockActive` 与锁摘要，消除模型从
   缺失字段误判锁状态的问题。
-- 12 个 IPH 工具全部标记为 coordinator essential；修复扩展注册了 `iph_clear_lock`
+- 13 个 IPH 工具全部标记为 coordinator essential；修复扩展注册了 `iph_clear_lock`
   但 M3 实际工具面不可见的恢复死锁。
 - 权威 IPH 锁升级到 `1f7df5134683cc1e65d375da831bd64ec708a999`。
 

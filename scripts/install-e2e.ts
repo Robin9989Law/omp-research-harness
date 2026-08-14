@@ -78,6 +78,7 @@ try {
 	assert(installedRoles.frontier === "openai-codex/gpt-5.6-sol:high", "install did not route frontier adjudication to GPT");
 	assert(installedRoles.layer === "openai-codex/gpt-5.6-sol:high", "install did not route layer adjudication to GPT");
 	assert(installedRoles.atomic === "openai-codex/gpt-5.6-sol:high", "install did not set managed model roles");
+	assert(installedRoles.event === "deepseek/deepseek-v4-flash:low", "install did not route event compression to DeepSeek V4 Flash");
 	assert(installedRoles.commit === "minimax-code-cn/MiniMax-M3:high", "install did not keep commit on the default M3 model");
 	assert(installedRoles.unrelated === "keep/me", "install clobbered an unrelated model role");
 	const customRolesFile = path.join(testRoot, "custom-roles.yml");

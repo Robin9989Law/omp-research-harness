@@ -47,7 +47,7 @@
 | F8 | reviewer 自审或主 agent 改审计 | 拒绝或逐字节回滚 | reviewer/protected artifact 测试 |
 | F9 | 未授权计算 | tool_call 前拦截 | compute preflight 测试 |
 | F10 | lifecycle、skill commit/hash 或安装中途漂移 | STOP 或事务回滚 | lock/install/package E2E |
-| F11 | 工具已注册但未挂到模型可见工具面 | 12 个 IPH 工具全部 essential | 真实 OMP loader 可见性断言 + M3 回合 |
+| F11 | 工具已注册但未挂到模型可见工具面 | 13 个 IPH 工具全部 essential | 真实 OMP loader 可见性断言 + M3 回合 |
 | F12 | specialist 先发 PASS 消息、正式 completion 尚未落地 | 身份门识别 started 并短暂等待正式 completion；凭证绑定 research root + target | lifecycle 竞态单测 + 真实 M3 单节点重放 |
 | F13 | specialist 从模糊术语创造不存在的 JSON 排序约束 | FAIL 必须引用精确规则/schema/issue；明确 false-first 与 OCCUPIES 极性 | agent 合同断言 + 真实 GPT-5.6-sol 失败轨迹 |
 | F14 | specialist 已产出 READY gate，却把正式 completion 时间用于无界可选检索 | gate closure 与 exploration 分离；超时身份不可复用，draft 可由新任务复核续接 | agent 合同断言 + 15 分钟真实超时轨迹 + 续接重放 |
@@ -56,6 +56,8 @@
 | F17 | 磁盘上存在 URL ledger，但已置真的 literature gate 没有活动指针 | validator 拒绝隐式文件名猜测；要求 `artifacts.url_ledger` 并用版本化修复工具原子切换 | workflow-state 单测 + 真实 M3 拒绝无根修复轨迹 |
 | F18 | M3 理解目标但不知如何构造 validator 可接受的输出 | transition plan 先给题面、必读证据、输出合同、最小正例、反例与 completion proof | briefing 单测 + 真实 OMP loader |
 | F19 | task lifecycle 重复/乱序：`completed` 后到 `started/failed`，或终态先到 | 生命周期单调；终态不回退，重复幂等，身份/作用域不被后到事件污染 | duplicate/out-of-order/identity-collision 单测 |
+| F20 | 大量事件直接涌入 M3，当前/历史/冲突任务混杂 | 确定性 `iph_event_snapshot` 投影，DeepSeek V4 Flash 只读压缩，无 task/advance/科学裁决权 | 角色/工具安装 E2E + 有无管理员消融 |
+| F21 | transition plan 的自然语义让 M3 提前置真下一态 gate | 每个 target 返回并预检精确 gate assignments；未提交前拒绝 future gate | gate-state 绑定单测 + L2 真实回滚轨迹 |
 
 ## 4. 分层测试顺序
 

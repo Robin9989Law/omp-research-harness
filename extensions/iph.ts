@@ -58,6 +58,10 @@ interface SubagentLifecycleRecord {
 	parentToolCallId?: string;
 	researchRoot?: string;
 	target?: string;
+	firstSeenAt: string;
+	updatedAt: string;
+	eventCount: number;
+	conflicts: string[];
 }
 
 interface SpecialistDispatchBinding {
@@ -98,6 +102,34 @@ interface TransitionPlan {
 	stateArtifacts: string[];
 	immutableArtifacts: string[];
 	forbidden: string[];
+}
+
+const TARGET_GATE_ASSIGNMENTS: Record<string, string[]> = {
+	SCOPE_LOCK: ["scope_locked=true"],
+	PRIOR_CLAIM_DRAIN: ["prior_claims_drained=true"],
+	RECENT_FRONTIER: ["recent_frontier_complete=true"],
+	LITERATURE_REGISTER: ["literature_registry_valid=true"],
+	L1_FREEZE: ["l1_frozen=true"],
+	L2_TRIAGE: ["k_set_selected=true"],
+	LAYER_DECISION: ["l2_frozen=true", "architecture_frozen=true"],
+	K_FULLTEXT: ["k_fulltext_complete=true"],
+	K_CLAIM_REGISTER: ["k_claims_complete=true"],
+	OUTPUT_CLAIM_BIND: ["output_claims_traced=true"],
+	EVIDENCE_VALIDATE: ["evidence_validated=true"],
+	N0_AUDIT: ["n0_4_locked=true"],
+};
+
+export function transitionGateIssue(target: string, assignments: string[]): string | undefined {
+	const required = TARGET_GATE_ASSIGNMENTS[target] ?? [];
+	const observed = new Set(assignments);
+	const missing = required.filter(assignment => !observed.has(assignment));
+	if (missing.length > 0) return `missing target gate assignments: ${missing.join(", ")}`;
+	const future = Object.entries(TARGET_GATE_ASSIGNMENTS)
+		.filter(([state]) => state !== target)
+		.flatMap(([state, gates]) => gates.map(gate => ({ state, gate })))
+		.find(({ gate }) => observed.has(gate) && !required.includes(gate));
+	if (future) return `gate ${future.gate} belongs to ${future.state}, not target ${target}`;
+	return undefined;
 }
 
 interface NodeExample {
@@ -165,6 +197,7 @@ const IPH_TOOL_NAMES = new Set([
 	"iph_repair_artifact_pointer",
 	"iph_register_exploration",
 	"iph_handover",
+	"iph_event_snapshot",
 ]);
 const SPECIALIST_TASK_AGENTS = new Set([
 	"frontier-auditor",
@@ -235,6 +268,7 @@ export function nodeBriefing(
 		],
 		outputContract: {
 			requiredDrafts: plan.requiredDrafts,
+			requiredGateAssignments: TARGET_GATE_ASSIGNMENTS[plan.target] ?? [],
 			stateArtifacts: plan.stateArtifacts,
 			immutableArtifacts: plan.immutableArtifacts,
 		},
@@ -547,9 +581,30 @@ export function recordSubagentLifecycle(payload: unknown, binding?: SpecialistDi
 	}
 	const sessionFile = normalizedSessionFile(candidate.sessionFile);
 	const existing = runtimeRegistry().get(sessionFile);
-	if (existing && (existing.id !== candidate.id || existing.agent !== candidate.agent)) return;
+	const now = new Date().toISOString();
+	if (existing && (existing.id !== candidate.id || existing.agent !== candidate.agent)) {
+		runtimeRegistry().set(sessionFile, {
+			...existing,
+			updatedAt: now,
+			eventCount: existing.eventCount + 1,
+			conflicts: [...new Set([...existing.conflicts, `identity_collision:${candidate.id}/${candidate.agent}`])],
+		});
+		return;
+	}
 	const terminal = new Set<SubagentLifecycleRecord["status"]>(["completed", "failed", "aborted"]);
-	if (existing && terminal.has(existing.status)) return;
+	if (existing && terminal.has(existing.status)) {
+		const incoming = candidate.status as SubagentLifecycleRecord["status"];
+		const conflict = terminal.has(incoming) && incoming !== existing.status
+			? `terminal_status_conflict:${existing.status}->${incoming}`
+			: undefined;
+		runtimeRegistry().set(sessionFile, {
+			...existing,
+			updatedAt: now,
+			eventCount: existing.eventCount + 1,
+			conflicts: conflict ? [...new Set([...existing.conflicts, conflict])] : existing.conflicts,
+		});
+		return;
+	}
 	const bound = binding?.agents.has(candidate.agent) ? binding : undefined;
 	runtimeRegistry().set(sessionFile, {
 		id: candidate.id,
@@ -559,6 +614,10 @@ export function recordSubagentLifecycle(payload: unknown, binding?: SpecialistDi
 		parentToolCallId: text(candidate.parentToolCallId) || existing?.parentToolCallId,
 		researchRoot: bound?.researchRoot ?? existing?.researchRoot,
 		target: bound?.target ?? existing?.target,
+		firstSeenAt: existing?.firstSeenAt ?? now,
+		updatedAt: now,
+		eventCount: (existing?.eventCount ?? 0) + 1,
+		conflicts: existing?.conflicts ?? [],
 	});
 }
 
@@ -787,6 +846,55 @@ export function inspectSpecialistCompletion(
 		};
 	}
 	return { completed: false, status: "not_observed", diagnosis: `${agentId} has no authenticated task lifecycle record` };
+}
+
+export function eventFlowSnapshot(researchRoot: string, expectedTarget?: string, expectedAgent?: string) {
+	const records = [...runtimeRegistry().values()]
+		.filter(record => record.researchRoot === researchRoot)
+		.sort((left, right) => left.firstSeenAt.localeCompare(right.firstSeenAt) || left.id.localeCompare(right.id));
+	const tasks = records.map(record => ({
+		id: record.id,
+		agent: record.agent,
+		status: record.status,
+		target: record.target ?? null,
+		classification: record.conflicts.length > 0
+			? "CONFLICT"
+			: record.target !== expectedTarget
+			? "STALE"
+			: record.agent !== expectedAgent
+				? "CONFLICT"
+				: record.status === "started" ? "CURRENT_STARTED" : "CURRENT_TERMINAL",
+		firstSeenAt: record.firstSeenAt,
+		updatedAt: record.updatedAt,
+		eventCount: record.eventCount,
+		conflicts: record.conflicts,
+	}));
+	const current = tasks.filter(task => task.classification !== "STALE");
+	const conflicts = current.filter(task => task.classification === "CONFLICT");
+	const started = current.filter(task => task.classification === "CURRENT_STARTED");
+	const completed = current.filter(task => task.classification === "CURRENT_TERMINAL" && task.status === "completed");
+	const failed = current.filter(task => task.classification === "CURRENT_TERMINAL" && task.status !== "completed");
+	let recommendation = "DISPATCH_REQUIRED";
+	if (conflicts.length > 0 || current.length > 1) recommendation = "RECONCILE_CONFLICT";
+	else if (started.length === 1) recommendation = "WAIT_FOR_FORMAL_COMPLETION";
+	else if (failed.length === 1) recommendation = "HANDLE_TERMINAL_FAILURE";
+	else if (completed.length === 1) recommendation = "VERIFY_ARTIFACTS_AND_RECORD_DISPOSITION";
+	return {
+		researchRoot,
+		expectedTarget: expectedTarget ?? null,
+		expectedAgent: expectedAgent ?? null,
+		recommendation,
+		stateChangeJustified: completed.length === 1 && current.length === 1,
+		counts: {
+			total: tasks.length,
+			currentStarted: started.length,
+			currentCompleted: completed.length,
+			currentFailed: failed.length,
+			stale: tasks.filter(task => task.classification === "STALE").length,
+			conflicts: conflicts.length,
+		},
+		tasks,
+	};
 }
 
 export async function waitForSpecialistCompletion(
@@ -1746,6 +1854,29 @@ export default function iphExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerTool({
+		name: "iph_event_snapshot",
+		label: "IPH Event Flow Snapshot",
+		description: "Return a read-only, deterministic projection of authenticated specialist lifecycle events for the current transition",
+		approval: "read",
+		loadMode: "essential",
+		parameters: z.object({ root: rootField }),
+		async execute(_id, params, _signal, _update, ctx) {
+			const input = params as { root?: string };
+			const root = resolveResearchRoot(ctx.cwd, input.root);
+			const state = await readWorkflow(root);
+			if (!state) return toolResult(blockedResult(root, "workflow_state.json is unreadable"));
+			const plan = transitionPlanForState(state);
+			return toolResult({
+				status: "READY",
+				exitCode: 0,
+				stdout: JSON.stringify(eventFlowSnapshot(root, text(plan?.target), plan?.specialist), null, 2),
+				stderr: "",
+				root,
+			});
+		},
+	});
+
+	pi.registerTool({
 		name: "iph_transition_plan",
 		label: "IPH Transition Plan",
 		description: "Return the deterministic next-state contract, specialist, artifacts, forbidden actions, and Agent-native execution policy without changing research state",
@@ -1792,6 +1923,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 					blockedReasons: state.blocked_reasons,
 					nextRequiredAction: state.next_required_action,
 					...plan,
+					requiredGateAssignments: TARGET_GATE_ASSIGNMENTS[plan.target] ?? [],
 					briefing: nodeBriefing(text(state.active_state), state, plan, resolveSkillDir()),
 					executionPolicy: AGENT_NATIVE_EXECUTION_POLICY,
 					specialistDispatch: plan.specialist ? {
@@ -1867,6 +1999,10 @@ export default function iphExtension(pi: ExtensionAPI) {
 					root,
 					`mutable state pointer artifacts must not be frozen in decision_log: ${mutableConflicts.join(", ")}`,
 				));
+			}
+			const gateIssue = transitionGateIssue(input.to, input.gates);
+			if (gateIssue) {
+				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${gateIssue}`));
 			}
 			const requiredSpecialist = requiredSpecialistForTarget(input.to);
 			if (requiredSpecialist) {

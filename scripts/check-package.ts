@@ -19,6 +19,7 @@ const required = [
 	"agents/atomic-claim-extractor.md",
 	"agents/collision-synthesizer.md",
 	"agents/frontier-auditor.md",
+	"agents/event-flow-manager.md",
 	"agents/layer-adjudicator.md",
 	"agents/iph-reviewer.md",
 	"commands/iph.md",

@@ -25,6 +25,7 @@ const expectedAgents = {
 	"atomic-claim-extractor": "atomic",
 	"collision-synthesizer": "collision",
 	"iph-reviewer": "review",
+	"event-flow-manager": "event",
 } as const;
 
 for (const [agent, role] of Object.entries(expectedAgents)) {
@@ -44,6 +45,7 @@ assert(agentNativeContract.includes("最大化主 Agent 能力"), "agent-native 
 assert(agentNativeContract.includes("约束的是副作用，不是思考空间"), "agent-native contract confuses reasoning with side-effect control");
 assert(roles.default?.includes("MiniMax-M3"), "default coordinator must remain MiniMax-M3");
 assert(roles.commit === roles.default, "commit and coordinator must share the M3 selector");
+assert(roles.event === "deepseek/deepseek-v4-flash:low", "event flow must use the low-latency DeepSeek V4 Flash role");
 
 const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 assert(packageJson.version === packageJson.omp?.version, "package and OMP versions drifted");
@@ -94,6 +96,6 @@ assert(
 );
 process.stdout.write(
 	`system_matrix=READY nodes=${POSITIVE_STATE_SEQUENCE.length} transitions=${POSITIVE_STATE_SEQUENCE.length - 1} ` +
-	`specialist_edges=${specialistEdges} negative_terminals=2 failure_injections=19 state_sources=python+typescript package=${packageJson.version} ` +
+	`specialist_edges=${specialistEdges} negative_terminals=2 failure_injections=21 state_sources=python+typescript package=${packageJson.version} ` +
 	`skill=${skillLock.commit}\n`,
 );
