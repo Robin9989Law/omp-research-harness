@@ -60,7 +60,7 @@
 | F21 | transition plan 的自然语义让 M3 提前置真下一态 gate | 每个 target 返回并预检精确 gate assignments；未提交前拒绝 future gate | gate-state 绑定单测 + L2 真实回滚轨迹 |
 | F22 | M3 在 L1/L2 猜测贡献类型，或把 `nextAction` 直接写成更远节点 | plan 明示当前 target 的 contribution 合同与提交后的唯一相邻 target；写前拒绝跨层 contribution 和跳态 next action | contribution/next-action 单测 + L2 消融失败轨迹 |
 | F23 | M3 因 `task` 无 model 参数误报 specialist 回退到默认模型 | agent role 负责路由；实际模型只以 lifecycle `resolvedModel` / `model_change` 为证，缺证据报告 UNKNOWN | DeepSeek V4 Flash 真实 JSONL trace + agent/系统合同断言 |
-| F24 | 本地调试只用 `-e extensions/iph.ts`，或把 `--no-extensions` 与 `--plugin-dir` 混用，导致工具与 agent 只加载一半 | 源码调试统一使用 `scripts/run-local-omp.sh` 的完整 `--plugin-dir` 入口；半装载命令不进入标准测试 | runner 静态断言 + 两条真实失败轨迹 + 完整包成功重放 |
+| F24 | 本地调试只用 `--extension`，或在 OMP 17.3 下只用 `--plugin-dir`，导致 agent 或 `iph_*` 工具/保护 hooks 只加载一半 | 源码调试统一使用 `scripts/run-local-omp.sh`，同时传 plugin root 与精确 extension 模块；禁止 `--no-extensions` | runner 静态断言 + 真实 Node 17 半装载失败轨迹 + session tool-call 证据 |
 | F25 | event-flow-manager 把自己的 Flash 身份外推给 layer-adjudicator，M3 再把错误身份写入 decision note | 模型身份从自由文本剥离；harness 直接读取认证 session 的 `model_change` 并自动记账，rationale 禁止自报模型；manager 只可标注自身模型 | session model-evidence 单测 + 真实 L2 错误归因轨迹 |
 | F26 | `npm pack --dry-run` 受用户 `~/.npm` 历史 root-owned 缓存污染而 EPERM | release/package E2E 使用一次性隔离 npm cache，结束后清理；不修改用户缓存，不建议 sudo | release-check 真实失败轨迹 + 隔离缓存重放 |
 | F27 | reviewer 在子任务内合法 `iph_review` 后，父 `task` 安全快照把 sealed state 当成越权修改回滚 | 父边界只接受同态 review state、runtime IDs、bundle hash、review hash 与 PASS/FAIL 语义全部一致的闭环；仅放行该 state 与唯一登记 JSON，其余变化照常回滚 | 真实 loader/hook E2E + Node 21 连续事务 E2E |
@@ -82,9 +82,9 @@ L5 真实模型：M3 可跨节点做全局推理，但每回合只提交一个�
 L6 能力激发：对步骤脚本/目标不变量、原始上下文/状态投影、权威专家/对抗同伴做 scaffold 消融
 ```
 
-源码真实模型测试必须通过 `npm run debug:omp -- ...`（内部仅使用 `--plugin-dir`）启动。
-不得用 `-e extensions/iph.ts` 替代完整产品，也不得把 `--no-extensions` 与 `--plugin-dir` 混用；
-前者会漏 agent，后者会漏扩展工具，二者产生的失败都不代表发布包行为。
+源码真实模型测试必须通过 `npm run debug:omp -- ...` 启动。该入口同时传
+`--plugin-dir <root>`（agents/resources）和 `--extension <root>/extensions/iph.ts`（工具/hooks）。
+不得只用其中一个，也不得传 `--no-extensions`；半装载的失败不代表发布包行为。
 
 M3 每一步先 `iph_status`、再 `iph_transition_plan`；可以分析全局路径、质疑计划和比较信息价值，
 但一次只能提交计划中的一个 target。

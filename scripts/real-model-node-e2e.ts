@@ -59,6 +59,29 @@ async function modelChanges(root: string, sinceMs: number): Promise<JsonObject[]
 	return changes;
 }
 
+async function toolCalls(root: string, sinceMs: number): Promise<JsonObject[]> {
+	const calls: JsonObject[] = [];
+	for (const file of await jsonFiles(root)) {
+		const metadata = await stat(file).catch(() => undefined);
+		if (!metadata || metadata.mtimeMs < sinceMs) continue;
+		for (const line of (await readFile(file, "utf8")).split("\n")) {
+			if (!line.trim()) continue;
+			try {
+				const entry = JSON.parse(line) as JsonObject;
+				if (entry.type !== "message" || entry.message?.role !== "assistant") continue;
+				for (const content of Array.isArray(entry.message.content) ? entry.message.content : []) {
+					if (content?.type === "toolCall" && typeof content.name === "string") {
+						calls.push({ file: path.relative(root, file), name: content.name });
+					}
+				}
+			} catch {
+				// Non-JSON diagnostics cannot establish tool provenance.
+			}
+		}
+	}
+	return calls;
+}
+
 const EDGE_TARGETS: Record<string, string> = {
 	INDEPENDENT_REVIEW: "DIRECTION_LOCK",
 	DIRECTION_LOCK: "COMPUTE",
@@ -93,6 +116,8 @@ await mkdir(sessionsEvidenceRoot, { recursive: true });
 const skillDir = resolveSkillDir();
 assert(skillDir, "authoritative IPH skill checkout is unavailable");
 const projectRoot = path.resolve(import.meta.dir, "..");
+const extensionPath = path.join(projectRoot, "extensions", "iph.ts");
+assert(await exists(extensionPath), `missing local IPH extension: ${extensionPath}`);
 const sourceAgentDir = path.resolve(process.env.PI_CODING_AGENT_DIR?.trim() || path.join(homedir(), ".omp", "agent"));
 const runtimeRoot = await mkdtemp("/tmp/omp-real-model-runtime.");
 const runtimeAgent = path.join(runtimeRoot, "agent");
@@ -162,6 +187,7 @@ try {
 				"--no-pty",
 				"--no-lsp",
 				"--plugin-dir", projectRoot,
+				"--extension", extensionPath,
 				"--cwd", researchRoot,
 				"--session-dir", runtimeSessions,
 				"--model", "minimax-code-cn/MiniMax-M3",
@@ -190,6 +216,7 @@ try {
 			await writeFile(logPath, `${stdout}${stderr ? `\n[stderr]\n${stderr}` : ""}`);
 			const after = JSON.parse(await readFile(path.join(researchRoot, "workflow_state.json"), "utf8")) as JsonObject;
 			const traces = await modelChanges(runtimeRoot, startedAtMs);
+			const calls = await toolCalls(runtimeRoot, startedAtMs);
 			await cp(runtimeSessions, sessionsEvidenceRoot, { recursive: true, force: true });
 			const stopLock = await exists(path.join(researchRoot, ".workflow_stop.lock"));
 			const validation = Bun.spawn([
@@ -216,6 +243,7 @@ try {
 				validationEpoch: after.validation_epoch,
 				stopLock,
 				modelChanges: traces,
+				toolCalls: calls,
 				log: path.relative(runRoot, logPath),
 			};
 			evidence.nodes.push(nodeEvidence);
@@ -224,10 +252,14 @@ try {
 			assert(after.active_state === target, `node ${node} expected ${target}, found ${after.active_state}; STOP=${stopLock}`);
 			assert(validatorExit === 0, `node ${node} strict validator exited ${validatorExit}: ${validatorStderr || validatorStdout}`);
 			assert(traces.some(item => String(item.model).includes("MiniMax-M3")), `node ${node} lacks runtime M3 model_change evidence`);
+			assert(calls.some(item => item.name === "iph_status"), `node ${node} did not call iph_status`);
+			assert(calls.some(item => item.name === "iph_transition_plan"), `node ${node} did not call iph_transition_plan`);
+			assert(calls.some(item => item.name === "iph_advance"), `node ${node} did not close its edge through iph_advance`);
 			if (node === 17 || node === 21) {
 				const decisionEvidence = JSON.stringify(after.decision_log ?? []);
 				const reviewerTrace = traces.some(item => String(item.model).includes("deepseek-v4-pro"));
 				assert(reviewerTrace || decisionEvidence.includes("deepseek-v4-pro"), `node ${node} lacks DeepSeek V4 Pro reviewer evidence`);
+				assert(calls.some(item => item.name === "iph_review"), `node ${node} reviewer did not seal through iph_review`);
 			}
 			process.stdout.write(`REAL_NODE_PASS node=${node} active_state=${after.active_state} validator=0 models=${traces.map(item => item.model).join(",")}\n`);
 		}

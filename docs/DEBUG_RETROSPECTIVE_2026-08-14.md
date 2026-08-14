@@ -56,8 +56,8 @@
 | M3 把下一步跳到 K_FULLTEXT | Navigation | plan 明示 post-commit 相邻 target；nextAction 写前拒绝跳态 |
 | M3 误报 Flash 未启用 | Observability | 实际模型只认 session `model_change`，不从 task 参数缺失推断 |
 | event manager 把自己的 Flash 身份归给 layer | Provenance | harness 自动读认证 specialist session；rationale 禁止自报模型 |
-| `-e` 调试时工具有、agent 无 | Test harness | 标准源码入口统一 `--plugin-dir`，不拆开产品包 |
-| `--no-extensions --plugin-dir` 时 agent 有、工具无 | Test harness | 同上；两条半装载轨迹作为失败注入保留 |
+| 只用 `--extension` 时工具有、agent 无 | Test harness | 标准源码入口同时传 `--plugin-dir` 与精确 `--extension`，不拆开产品包 |
+| OMP 17.3 下只用 `--plugin-dir` 时 agent 有、`iph_*` 工具/hooks 无 | Test harness | 同上；真实 Node 17 半闭环轨迹作为失败注入保留 |
 | release dry-run 被 `~/.npm` root-owned cache 阻塞 | Execution environment | 使用自动清理的一次性 npm cache，不触碰用户缓存 |
 | reviewer 合法 seal 后仍在父 task 返回时消失 | 两层事务边界 | 父快照重新判定 runtime identity、同态 state、bundle/review hash 与 PASS/FAIL/STOP；只放行合法最小 delta |
 | pending review fixture 预置未来审计 | Fixture integrity | pending 状态删除未来/旧 review 文件；审计必须由当前 reviewer 新建 |

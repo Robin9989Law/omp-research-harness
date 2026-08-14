@@ -235,9 +235,9 @@ npm run debug:omp -- -p --model minimax-code-cn/MiniMax-M3 --thinking high \
   --approval-mode yolo --cwd /absolute/research/root "你的测试提示词"
 ```
 
-该入口使用 OMP `--plugin-dir`，会一起加载扩展工具、agents、SYSTEM 与配置。不要用
-`-e extensions/iph.ts` 代替完整产品，也不要同时传 `--no-extensions`；这两种半装载方式分别会
-造成“工具存在但 specialist 不可指派”和“规则/agent 存在但 iph 工具不可见”的假故障。
+该入口同时使用 OMP `--plugin-dir` 和精确的 `--extension`：前者加载 agents/SYSTEM/资源，
+后者加载当前源码树的 13 个 `iph_*` 工具与安全 hooks。不要只用其中一个，也不要同时传
+`--no-extensions`；这些半装载方式会造成“specialist 不可指派”或“`iph_*` 工具/保护层不可见”的假故障。
 
 #### 2.2 安装插件
 
