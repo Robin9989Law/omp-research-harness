@@ -294,6 +294,10 @@ async function applyLayeredEvidence(root: string, source: string): Promise<void>
 			verified_against_metadata: false,
 			block_reason: "L1/L2 metadata-and-abstract stage; K fulltext retrieval has not begun.",
 		};
+		await writeJson(path.join(root, "near_neighbor_registry.json"), registry);
+	}
+	if (sourceIndex < claimIndex) {
+		const registry = await readJson(path.join(root, "near_neighbor_registry.json"));
 		registry.records[0].claim_extraction_status = "NOT_STARTED";
 		await writeJson(path.join(root, "near_neighbor_registry.json"), registry);
 	}
