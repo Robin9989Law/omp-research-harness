@@ -58,6 +58,8 @@
 | F19 | task lifecycle 重复/乱序：`completed` 后到 `started/failed`，或终态先到 | 生命周期单调；终态不回退，重复幂等，身份/作用域不被后到事件污染 | duplicate/out-of-order/identity-collision 单测 |
 | F20 | 大量事件直接涌入 M3，当前/历史/冲突任务混杂 | 确定性 `iph_event_snapshot` 投影，DeepSeek V4 Flash 只读压缩，无 task/advance/科学裁决权 | 角色/工具安装 E2E + 有无管理员消融 |
 | F21 | transition plan 的自然语义让 M3 提前置真下一态 gate | 每个 target 返回并预检精确 gate assignments；未提交前拒绝 future gate | gate-state 绑定单测 + L2 真实回滚轨迹 |
+| F22 | M3 在 L1/L2 猜测贡献类型，或把 `nextAction` 直接写成更远节点 | plan 明示当前 target 的 contribution 合同与提交后的唯一相邻 target；写前拒绝跨层 contribution 和跳态 next action | contribution/next-action 单测 + L2 消融失败轨迹 |
+| F23 | M3 因 `task` 无 model 参数误报 specialist 回退到默认模型 | agent role 负责路由；实际模型只以 lifecycle `resolvedModel` / `model_change` 为证，缺证据报告 UNKNOWN | DeepSeek V4 Flash 真实 JSONL trace + agent/系统合同断言 |
 
 ## 4. 分层测试顺序
 
@@ -88,6 +90,7 @@ validator 拒绝率。测试结果用于删除压制 M3 全局推理的冗余步
 
 - 状态、锁、身份、完成度和下一动作均为机器可判定字段；
 - 已发送消息不等于任务完成，自报 ID 不等于运行时身份；
+- `task` 参数没有 model 字段不等于模型回退；实际模型身份只取运行时 lifecycle 元数据；
 - 每个节点只有一个目标、一个合同和一个合法恢复动作；
 - 错误必须包含已观察状态和可执行诊断，不能只给模糊失败；
 - 重复、提前、超时和乱序调用必须幂等或安全拒绝；

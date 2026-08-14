@@ -40,6 +40,8 @@ assert(frontierAgent.includes("independent adversarial peer"), "frontier auditor
 assert(frontierAgent.includes("Separate gate closure from open-ended exploration"), "frontier auditor lacks bounded completion semantics");
 assert(frontierAgent.includes("evidence roles, not a URL-count target"), "frontier auditor may optimize URL count over evidence semantics");
 assert(frontierAgent.includes("not authority over the coordinator"), "frontier completion is incorrectly framed as authority");
+const eventAgent = await readFile(path.join(root, "agents", "event-flow-manager.md"), "utf8");
+assert(eventAgent.includes("resolvedModel") && eventAgent.includes("UNKNOWN"), "event manager may infer a model fallback without runtime evidence");
 const agentNativeContract = await readFile(path.join(root, "AGENT_NATIVE_ENGINEERING.md"), "utf8");
 assert(agentNativeContract.includes("最大化主 Agent 能力"), "agent-native contract suppresses M3 capability");
 assert(agentNativeContract.includes("约束的是副作用，不是思考空间"), "agent-native contract confuses reasoning with side-effect control");
@@ -96,6 +98,6 @@ assert(
 );
 process.stdout.write(
 	`system_matrix=READY nodes=${POSITIVE_STATE_SEQUENCE.length} transitions=${POSITIVE_STATE_SEQUENCE.length - 1} ` +
-	`specialist_edges=${specialistEdges} negative_terminals=2 failure_injections=21 state_sources=python+typescript package=${packageJson.version} ` +
+	`specialist_edges=${specialistEdges} negative_terminals=2 failure_injections=23 state_sources=python+typescript package=${packageJson.version} ` +
 	`skill=${skillLock.commit}\n`,
 );

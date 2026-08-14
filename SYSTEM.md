@@ -68,6 +68,10 @@ claim bundle）、换轨（中途换路径/形式/贡献）。被驳回则执行
 agent/thread provenance 只接受 OMP lifecycle 运行时值。需补字段只能重派 subagent 并新建
 epoch 文件，事后改动即 REVIEW_ARTIFACT_TAMPERED。
 
+`task` 调用没有 model 参数是正常的角色路由，不代表回退到主模型。子代理实际模型只接受
+运行时 lifecycle 的 `resolvedModel` / `model_change` 为证；看不到该元数据时必须报告
+`UNKNOWN`，不得根据调用参数、agent 名称或模型自述猜测。
+
 specialist 委派 MUST 使用最小 `task` 调用：只传 `context` 与 `tasks[]` 中的 `name`、
 `agent`、`task`。MUST NOT 为上述 specialist 自造或传入 `outputSchema` / `schemaMode`；
 它们直接写 transition contract 指定的工件。等待任务完成后，把返回的精确 agent ID

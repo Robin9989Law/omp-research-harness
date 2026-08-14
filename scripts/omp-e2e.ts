@@ -197,7 +197,7 @@ try {
 			gates: [],
 			artifacts: ["near_neighbor_registry.json"],
 			stateArtifacts: ["literature_registry=near_neighbor_registry.json"],
-			nextAction: "Do not commit this transition.",
+			nextAction: "Run PRIOR_CLAIM_DRAIN only after a valid SCOPE_LOCK commit.",
 			strict: true,
 		},
 		main,
@@ -217,7 +217,7 @@ try {
 			gates: ["scope_locked=true"],
 			artifacts: ["scope_lock.md", "hierarchy_status.md"],
 			stateArtifacts: [],
-			nextAction: "Drain prior-round claims before frontier search.",
+			nextAction: "Run PRIOR_CLAIM_DRAIN before frontier search.",
 			strict: true,
 		},
 		main,
@@ -237,7 +237,7 @@ try {
 			gates: ["scope_locked=true"],
 			artifacts: ["scope_lock.md", "hierarchy_status.md"],
 			stateArtifacts: ["scope_lock=scope_lock.md", "hierarchy_status=hierarchy_status.md"],
-			nextAction: "Drain prior-round claims before frontier search.",
+			nextAction: "Run PRIOR_CLAIM_DRAIN before frontier search.",
 			strict: true,
 		},
 		main,
@@ -250,7 +250,7 @@ try {
 		"advance omitted the hierarchy_status state pointer",
 	);
 	assert(
-		advancedState.next_required_action === "Drain prior-round claims before frontier search.",
+		advancedState.next_required_action === "Run PRIOR_CLAIM_DRAIN before frontier search.",
 		"advance left a stale next_required_action",
 	);
 

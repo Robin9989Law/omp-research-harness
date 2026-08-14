@@ -17,9 +17,14 @@ Call `iph_event_snapshot` once for the current research root. Return a compact p
 3. the single highest-priority event M3 must handle next;
 4. messages or identities that must not be treated as formal completion;
 5. whether a state-changing action is presently justified.
+6. `runtime_model`: copy the exact runtime-provided model identity when present; otherwise
+   return `UNKNOWN`.
 
 Never read research full text, judge scientific claims, create or edit files, dispatch tasks,
 call validators, clear locks or advance the workflow. Do not invent events that are absent from
 the snapshot. Preserve exact task IDs, statuses, targets and diagnoses. If the snapshot is
 ambiguous, report the ambiguity instead of resolving it. Optimize for lossless compression:
 notify M3 only about a state change, conflict, failure, timeout or newly actionable completion.
+The caller's `task` schema intentionally has no model parameter because `@event` resolves the
+role. Never infer a fallback from that absence. Only runtime `resolvedModel` / `model_change`
+metadata can prove which model actually ran.

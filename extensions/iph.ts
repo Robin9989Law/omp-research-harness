@@ -23,6 +23,8 @@ interface WorkflowState {
 	novelty_level?: unknown;
 	validity_level?: unknown;
 	claim_profile?: unknown;
+	output_type?: unknown;
+	active_contribution?: unknown;
 	validation_epoch?: unknown;
 	claim_bundle_sha256?: unknown;
 	blocked_reasons?: unknown;
@@ -132,6 +134,38 @@ export function transitionGateIssue(target: string, assignments: string[]): stri
 	return undefined;
 }
 
+const L1_L2_STATES = new Set([
+	"BOOT", "SCOPE_LOCK", "PRIOR_CLAIM_DRAIN", "RECENT_FRONTIER", "LITERATURE_REGISTER",
+	"L1_FREEZE", "L2_TRIAGE", "LAYER_DECISION",
+]);
+
+export function transitionContributionIssue(
+	target: string,
+	outputType: string,
+	current: string,
+	requested: string | undefined,
+): string | undefined {
+	if (["BLOCKED", "COMPLETE"].includes(target)) return undefined;
+	if (L1_L2_STATES.has(target)) {
+		return requested && requested !== "NONE"
+			? `${target} is an L1/L2 state; contribution must be NONE or omitted, not ${requested}`
+			: undefined;
+	}
+	const allowed = outputType === "JOURNAL_ARTICLE" ? ["M"] : outputType === "DOCTORAL_DISSERTATION" ? ["A", "B", "C"] : [];
+	const effective = requested ?? current;
+	if (target === "K_FULLTEXT" && outputType === "JOURNAL_ARTICLE" && !requested && !allowed.includes(effective)) return undefined;
+	if (!allowed.includes(effective)) return `${target} requires contribution ${allowed.join("|")}; observed ${effective || "(none)"}`;
+	return undefined;
+}
+
+export function nextActionIssue(target: string, nextAction: string): string | undefined {
+	const nextTarget = TRANSITION_PLANS[target]?.target;
+	if (!nextTarget) return undefined;
+	return nextAction.includes(nextTarget)
+		? undefined
+		: `nextAction after ${target} must explicitly name immediate target ${nextTarget}`;
+}
+
 interface NodeExample {
 	valid: string;
 	invalid: string;
@@ -209,6 +243,7 @@ const SPECIALIST_TASK_AGENTS = new Set([
 
 const AGENT_NATIVE_EXECUTION_POLICY = [
 	"Reason globally and challenge the plan when evidence warrants it; the deterministic target limits one transaction's side effects, not the coordinator's thinking.",
+	"Treat runtime lifecycle metadata (resolvedModel/model_change) as the only authority for a subagent's actual model; absence of a model field in the task call is normal role routing, not evidence of fallback.",
 	"Before specialist dispatch, distinguish gate-required work from optional exploration and set a resource envelope based on information gain, cost, and deadline.",
 	"Once required artifacts exist and the authoritative validator is READY, complete the gate task formally before optional exploration; do not spend the identity-bearing completion window on unrelated searches.",
 	"If optional evidence could materially change the verdict, stop safely with the exact open question and continue in a new bounded task; preserve drafts but never reuse a timed-out or stale specialist identity.",
@@ -269,6 +304,10 @@ export function nodeBriefing(
 		outputContract: {
 			requiredDrafts: plan.requiredDrafts,
 			requiredGateAssignments: TARGET_GATE_ASSIGNMENTS[plan.target] ?? [],
+			requiredContribution: L1_L2_STATES.has(plan.target)
+				? "NONE or omit"
+				: text(state.output_type) === "JOURNAL_ARTICLE" ? "M (first L3 transition may omit and default to M)" : "A, B, or C",
+			postCommitNextTarget: TRANSITION_PLANS[plan.target]?.target ?? null,
 			stateArtifacts: plan.stateArtifacts,
 			immutableArtifacts: plan.immutableArtifacts,
 		},
@@ -1922,6 +1961,10 @@ export default function iphExtension(pi: ExtensionAPI) {
 					nextRequiredAction: state.next_required_action,
 					...plan,
 					requiredGateAssignments: TARGET_GATE_ASSIGNMENTS[plan.target] ?? [],
+					requiredContribution: L1_L2_STATES.has(plan.target)
+						? "NONE or omit"
+						: text(state.output_type) === "JOURNAL_ARTICLE" ? "M (first L3 transition may omit and default to M)" : "A, B, or C",
+					postCommitNextTarget: TRANSITION_PLANS[plan.target]?.target ?? null,
 					briefing: nodeBriefing(text(state.active_state), state, plan, resolveSkillDir()),
 					executionPolicy: AGENT_NATIVE_EXECUTION_POLICY,
 					specialistDispatch: plan.specialist ? {
@@ -1931,6 +1974,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 						omitFields: ["outputSchema", "schemaMode"],
 						completion: "Wait for the task to complete and pass its exact agent ID as specialistAgentId.",
 						disposition: "Record ACCEPTED or OVERRIDDEN plus the evidence, rule, or validator rationale. Completion proves identity, not correctness.",
+						modelEvidence: "Report the actual subagent model only from runtime resolvedModel/model_change metadata; if unavailable report UNKNOWN, never infer fallback from the task input schema.",
 					} : null,
 					rules: [
 						...AGENT_NATIVE_EXECUTION_POLICY,
@@ -2001,6 +2045,20 @@ export default function iphExtension(pi: ExtensionAPI) {
 			const gateIssue = transitionGateIssue(input.to, input.gates);
 			if (gateIssue) {
 				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${gateIssue}`));
+			}
+			const currentState = await readWorkflow(root);
+			const contributionIssue = transitionContributionIssue(
+				input.to,
+				text(currentState?.output_type),
+				text(currentState?.active_contribution),
+				input.contribution,
+			);
+			if (contributionIssue) {
+				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${contributionIssue}`));
+			}
+			const actionIssue = nextActionIssue(input.to, input.nextAction);
+			if (actionIssue) {
+				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${actionIssue}`));
 			}
 			const requiredSpecialist = requiredSpecialistForTarget(input.to);
 			if (requiredSpecialist) {

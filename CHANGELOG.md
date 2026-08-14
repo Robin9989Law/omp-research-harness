@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- transition plan 现在明示目标态 contribution 合同和提交后的唯一相邻 target；`iph_advance`
+  在任何写入前拒绝 L1/L2 贡献越层及跳态 `nextAction`。
+- 子代理实际模型身份只接受运行时 `resolvedModel` / `model_change`；`task` 无 model 参数是
+  正常的角色路由接口，不再被误报为回退到默认模型。
+
 ## 0.0.4 - 2026-08-14
 
 - 将 M3 明确定义为全局综合与创新批判的责任主体，而不是弱调度器：确定性合同只限制

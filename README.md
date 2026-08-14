@@ -126,6 +126,9 @@ STOP/BLOCKED 不会触发自动续跑；operator 修复记录中的外部原因�
 
 所有角色都可以在安装时或安装后修改。插件不会在 provider 不可用时静默换模型，因为这会破坏
 复核独立性和运行记录。
+`task` 工具不需要也不接受调用者自填 model；agent 的 `@role` 在运行时解析。判断实际使用了
+哪个模型时，只认 task lifecycle 中的 `resolvedModel` / `model_change`，不能因为调用参数里没有
+model 就推断发生了回退。
 
 ## 快速开始
 
@@ -202,7 +205,7 @@ validator。
 本项目用 [SYSTEM_TEST_MATRIX.md](SYSTEM_TEST_MATRIX.md) 管理完整验证面，并用
 [AGENT_NATIVE_ENGINEERING.md](AGENT_NATIVE_ENGINEERING.md) 固化面向 Agent 用户的接口、生命周期、
 可靠性和可观测准则：23 个正向
-状态节点、22 条迁移、专家角色路由、正负 N0 终态、19 类故障注入、STOP/BLOCKED 恢复、事务回滚、
+状态节点、22 条迁移、专家角色路由、正负 N0 终态、23 类故障注入、STOP/BLOCKED 恢复、事务回滚、
 防篡改、计算门、安装和打包。升级固定按静态拓扑 → 单元 → 真实 OMP 组件 → 故障注入
 → 部署 → 真实 M3 单步重放执行，首错即停，不靠重复清锁碰运气。
 

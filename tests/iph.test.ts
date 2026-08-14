@@ -28,6 +28,8 @@ import {
 	specialistDispositionIssue,
 	transitionPlanForState,
 	transitionGateIssue,
+	transitionContributionIssue,
+	nextActionIssue,
 	validateLifecycleState,
 	verifySkillLock,
 	waitForSpecialistCompletion,
@@ -99,6 +101,16 @@ describe("M3 control-plane routing", () => {
 		expect(transitionGateIssue("L2_TRIAGE", ["l2_frozen=true"])).toContain("missing target gate");
 		expect(transitionGateIssue("L2_TRIAGE", ["k_set_selected=true", "l2_frozen=true"])).toContain("belongs to LAYER_DECISION");
 		expect(transitionGateIssue("LAYER_DECISION", ["l2_frozen=true", "architecture_frozen=true"])).toBeUndefined();
+	});
+
+	test("makes contribution and next-action parameters constructible before mutation", () => {
+		expect(transitionContributionIssue("L2_TRIAGE", "JOURNAL_ARTICLE", "NONE", undefined)).toBeUndefined();
+		expect(transitionContributionIssue("L2_TRIAGE", "JOURNAL_ARTICLE", "NONE", "M")).toContain("L1/L2");
+		expect(transitionContributionIssue("K_FULLTEXT", "JOURNAL_ARTICLE", "NONE", undefined)).toBeUndefined();
+		expect(transitionContributionIssue("K_FULLTEXT", "DOCTORAL_DISSERTATION", "NONE", undefined)).toContain("A|B|C");
+		expect(transitionContributionIssue("K_FULLTEXT", "DOCTORAL_DISSERTATION", "NONE", "A")).toBeUndefined();
+		expect(nextActionIssue("L2_TRIAGE", "Run LAYER_DECISION after the K set is selected.")).toBeUndefined();
+		expect(nextActionIssue("L2_TRIAGE", "Skip directly to K_FULLTEXT.")).toContain("LAYER_DECISION");
 	});
 
 	test("requires an explicit, reasoned disposition without treating specialist completion as authority", () => {
@@ -225,6 +237,47 @@ describe("M3 control-plane routing", () => {
 		expect(snapshot.tasks.some(task => task.id === "EventManager")).toBeFalse();
 		expect(snapshot.recommendation).toBe("RECONCILE_CONFLICT");
 		expect(snapshot.stateChangeJustified).toBeFalse();
+	});
+
+	test("compresses a high-volume mixed event stream without confusing optional or stale work", () => {
+		clearRuntimeRegistryForTests();
+		const researchRoot = "/tmp/research-event-storm";
+		const required = { researchRoot, target: "L2_TRIAGE", agents: new Set(["layer-adjudicator"]) };
+		const optional = { researchRoot, target: "L2_TRIAGE", agents: new Set(["scout"]) };
+		const stale = { researchRoot, target: "L1_FREEZE", agents: new Set(["scout"]) };
+		recordSubagentLifecycle({
+			id: "RequiredLayer",
+			agent: "layer-adjudicator",
+			status: "completed",
+			sessionFile: "/tmp/storm-required.jsonl",
+			parentToolCallId: "storm",
+		}, required);
+		for (let index = 0; index < 1_000; index += 1) {
+			recordSubagentLifecycle({
+				id: `Optional-${index}`,
+				agent: "scout",
+				status: "completed",
+				sessionFile: `/tmp/storm-optional-${index}.jsonl`,
+				parentToolCallId: "storm",
+			}, optional);
+		}
+		for (let index = 0; index < 100; index += 1) {
+			recordSubagentLifecycle({
+				id: `Stale-${index}`,
+				agent: "scout",
+				status: "failed",
+				sessionFile: `/tmp/storm-stale-${index}.jsonl`,
+				parentToolCallId: "storm-old",
+			}, stale);
+		}
+		const snapshot = eventFlowSnapshot(researchRoot, "L2_TRIAGE", "layer-adjudicator");
+		expect(snapshot.counts.total).toBe(1_101);
+		expect(snapshot.counts.currentCompleted).toBe(1);
+		expect(snapshot.counts.optional).toBe(1_000);
+		expect(snapshot.counts.stale).toBe(100);
+		expect(snapshot.counts.conflicts).toBe(0);
+		expect(snapshot.recommendation).toBe("VERIFY_ARTIFACTS_AND_RECORD_DISPOSITION");
+		expect(snapshot.stateChangeJustified).toBeTrue();
 	});
 
 	test("covers the complete positive state topology with no contract gaps", () => {
