@@ -23,8 +23,8 @@
 | E2/L1 | BOOT → SCOPE_LOCK → PRIOR_CLAIM_DRAIN | M3 | scope 与 prior claims 原子登记 |
 | E2/frontier | PRIOR_CLAIM_DRAIN → RECENT_FRONTIER → LITERATURE_REGISTER | frontier / GPT-5.6-sol | 最近窗口、身份、覆盖、注册表一致 |
 | E2/layer | LITERATURE_REGISTER → L1_FREEZE → L2_TRIAGE → LAYER_DECISION | layer / GPT-5.6-sol | L1/L2/贡献架构与证据深度一致 |
-| E2/L3 | LAYER_DECISION → K_FULLTEXT → K_CLAIM_REGISTER | M3 + atomic / GPT-5.6-sol | 只对 K 集合取全文和原子观点 |
-| E2/collision | K_CLAIM_REGISTER → SYNTHESIZE_COLLISION → OUTPUT_CLAIM_BIND | atomic + collision / GPT-5.6-sol | evidence→reasoning→statement、输出绑定 |
+| E2/L3 | LAYER_DECISION → K_FULLTEXT → K_CLAIM_REGISTER | M3 + atomic / GPT-5.6-sol | 只对 K 集合取全文；进入 K_CLAIM_REGISTER 前由 atomic 完成原子观点 |
+| E2/collision | K_CLAIM_REGISTER → SYNTHESIZE_COLLISION → OUTPUT_CLAIM_BIND | collision + M3 / GPT-5.6-sol | collision 专家完成 evidence→reasoning→statement，M3 只做确定性输出绑定 |
 | E2/audit | OUTPUT_CLAIM_BIND → EVIDENCE_VALIDATE → N0_AUDIT | M3 | 证伪书与 N0 正/负终态 |
 | E3/precompute | N0_AUDIT → CLAIM_FREEZE → VALIDITY_AUDIT → INDEPENDENT_REVIEW → DIRECTION_LOCK | M3 + review / DeepSeek V4 Pro | N0-4C、V1/V2、运行时绑定 V3 |
 | E4 | DIRECTION_LOCK → COMPUTE → POSTCOMPUTE_CLAIM_FREEZE | M3 | 用户授权不旁路 N0-4C/V3，S4 后新 epoch |

@@ -358,8 +358,9 @@ describe("M3 control-plane routing", () => {
 		expect(requiredSpecialistForTarget("SCOPE_LOCK")).toBeUndefined();
 		expect(requiredSpecialistForTarget("RECENT_FRONTIER")).toBe("frontier-auditor");
 		expect(requiredSpecialistForTarget("L1_FREEZE")).toBe("layer-adjudicator");
-		expect(requiredSpecialistForTarget("SYNTHESIZE_COLLISION")).toBe("atomic-claim-extractor");
-		expect(requiredSpecialistForTarget("OUTPUT_CLAIM_BIND")).toBe("collision-synthesizer");
+		expect(requiredSpecialistForTarget("K_CLAIM_REGISTER")).toBe("atomic-claim-extractor");
+		expect(requiredSpecialistForTarget("SYNTHESIZE_COLLISION")).toBe("collision-synthesizer");
+		expect(requiredSpecialistForTarget("OUTPUT_CLAIM_BIND")).toBeUndefined();
 		expect(requiredSpecialistForTarget("DIRECTION_LOCK")).toBe("iph-reviewer");
 		expect(requiredSpecialistForTarget("FINAL_LOCK")).toBe("iph-reviewer");
 	});

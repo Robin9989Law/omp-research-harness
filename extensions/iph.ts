@@ -347,13 +347,17 @@ const NODE_EXAMPLES: Record<string, NodeExample> = {
 		valid: "The contribution architecture reconciles the frozen layers with output type and names remaining obligations and stop conditions.",
 		invalid: "Choose a contribution contract to evade evidence obligations or imply compute authorization.",
 	},
-	K_CLAIM_REGISTER: {
+	K_FULLTEXT: {
 		valid: "Every atomic claim has a stable ID, archived source hash and exact locator, with quotation and interpretation kept distinct.",
 		invalid: "Use chapter summaries, unarchived text, unverifiable locators or coordinator-authored paraphrases as atomic evidence.",
 	},
-	SYNTHESIZE_COLLISION: {
+	K_CLAIM_REGISTER: {
 		valid: "Each output claim binds evidence, explicit reasoning and a scoped statement while retaining counter-evidence and uncertainty.",
 		invalid: "Declare novelty from similarity alone, omit the reasoning bridge or hide contradictory atomic claims.",
+	},
+	SYNTHESIZE_COLLISION: {
+		valid: "Bind the completed collision synthesis into output_claim_support.json without changing the specialist's evidence or reasoning.",
+		invalid: "Rewrite the collision verdict, add unsupported output claims, or mark an untraced claim complete.",
 	},
 };
 
@@ -478,26 +482,26 @@ const TRANSITION_PLANS: Record<string, TransitionPlan> = {
 	},
 	K_FULLTEXT: {
 		target: "K_CLAIM_REGISTER",
-		requiredDrafts: ["literature_archive/"],
-		stateArtifacts: ["literature_archive=literature_archive"],
-		immutableArtifacts: [],
-		forbidden: ["using unarchived or unhashed full text", "claim synthesis", "research computation"],
-	},
-	K_CLAIM_REGISTER: {
-		target: "SYNTHESIZE_COLLISION",
 		specialist: "atomic-claim-extractor",
 		requiredDrafts: ["literature_claim_registry.json"],
 		stateArtifacts: ["claim_registry=literature_claim_registry.json"],
 		immutableArtifacts: [],
-		forbidden: ["chapter-summary claims", "unverified locators", "research computation"],
+		forbidden: ["chapter-summary claims", "unverified locators", "using unarchived or unhashed full text", "research computation"],
 	},
-	SYNTHESIZE_COLLISION: {
-		target: "OUTPUT_CLAIM_BIND",
+	K_CLAIM_REGISTER: {
+		target: "SYNTHESIZE_COLLISION",
 		specialist: "collision-synthesizer",
 		requiredDrafts: ["output_claim_support.json"],
 		stateArtifacts: ["output_support=output_claim_support.json"],
 		immutableArtifacts: [],
-		forbidden: ["novelty verdicts without evidence-reasoning-statement", "research computation"],
+		forbidden: ["novelty verdicts without evidence-reasoning-statement", "hiding counter-evidence", "research computation"],
+	},
+	SYNTHESIZE_COLLISION: {
+		target: "OUTPUT_CLAIM_BIND",
+		requiredDrafts: ["output_claim_support.json"],
+		stateArtifacts: ["output_support=output_claim_support.json"],
+		immutableArtifacts: [],
+		forbidden: ["rewriting specialist collision reasoning", "untraced output claims", "evidence-strength inflation", "research computation"],
 	},
 	OUTPUT_CLAIM_BIND: {
 		target: "EVIDENCE_VALIDATE",
@@ -617,8 +621,8 @@ export function auditSystemTopology(): string[] {
 		L1_FREEZE: "layer-adjudicator",
 		L2_TRIAGE: "layer-adjudicator",
 		LAYER_DECISION: "layer-adjudicator",
-		SYNTHESIZE_COLLISION: "atomic-claim-extractor",
-		OUTPUT_CLAIM_BIND: "collision-synthesizer",
+		K_CLAIM_REGISTER: "atomic-claim-extractor",
+		SYNTHESIZE_COLLISION: "collision-synthesizer",
 		DIRECTION_LOCK: "iph-reviewer",
 		FINAL_LOCK: "iph-reviewer",
 	};
