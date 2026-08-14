@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { ablationReport, type AblationLadder, type HarnessFixAblation } from "./ablation";
 import { liveDiagnostics, type LiveDiagnostics } from "./diagnostics";
 import { efficiencyFailureClass, efficiencyReport } from "./efficiency";
+import type { ResearchOutputType } from "../extensions/iph";
 import { compileHtir } from "./htir";
 import { appendLedger, artifactHash, reuseKey } from "./ledger";
 import { attachFlawId } from "./flaws";
@@ -134,6 +135,7 @@ export async function ingestLiveRun(options: {
 		budgetMs: typeof harnessRun.budget_ms === "number" ? harnessRun.budget_ms : undefined,
 		endedAt: lastDecisionAt(workflow),
 		diagnostics,
+		outputType: (workflow.output_type ?? harnessRun.output_type) as ResearchOutputType | undefined,
 	});
 
 	let validator: IngestReport["validator"] = "skipped";

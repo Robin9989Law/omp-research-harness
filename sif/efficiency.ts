@@ -1,6 +1,18 @@
-import { POSITIVE_STATE_SEQUENCE } from "../extensions/iph";
+import {
+	POSITIVE_STATE_SEQUENCE,
+	nodeBudgetTable,
+	directionLockBudgetMs,
+	type ResearchOutputType,
+} from "../extensions/iph";
 import type { FailureClass } from "./types";
 import type { LiveDiagnostics } from "./diagnostics";
+
+export interface NodePacingReport {
+	outputType: ResearchOutputType;
+	totalBudgetMs: number;
+	nodeBudgets: Record<string, number>;
+	nodeOverruns: string[];
+}
 
 export interface EfficiencyReport {
 	skipAxes: string[];
@@ -10,7 +22,35 @@ export interface EfficiencyReport {
 	budgetMs?: number;
 	pendingAtExit: boolean;
 	unboundedSearch: boolean;
+	nodePacing?: NodePacingReport;
 	issue?: string;
+}
+
+export function computeNodePacing(options: {
+	outputType?: ResearchOutputType;
+	loggedStates?: string[];
+	nodeDurationsMs?: Record<string, number>;
+}): NodePacingReport {
+	const outputType = options.outputType ?? "JOURNAL_ARTICLE";
+	const totalBudgetMs = directionLockBudgetMs(outputType);
+	const nodeBudgets = nodeBudgetTable(outputType);
+	const nodeOverruns: string[] = [];
+
+	if (options.nodeDurationsMs) {
+		for (const [node, duration] of Object.entries(options.nodeDurationsMs)) {
+			const budget = nodeBudgets[node];
+			if (budget != null && duration > budget) {
+				nodeOverruns.push(`${node} (${duration}ms > ${budget}ms)`);
+			}
+		}
+	}
+
+	return {
+		outputType,
+		totalBudgetMs,
+		nodeBudgets,
+		nodeOverruns,
+	};
 }
 
 export function skipAxes(loggedStates: string[]): string[] {
@@ -36,6 +76,8 @@ export function efficiencyReport(options: {
 	budgetMs?: number;
 	endedAt?: string;
 	diagnostics?: LiveDiagnostics;
+	outputType?: ResearchOutputType;
+	nodeDurationsMs?: Record<string, number>;
 }): EfficiencyReport {
 	const skips = skipAxes(options.loggedStates);
 	const lastPending = options.diagnostics?.pendingToolCalls.at(-1);
@@ -48,7 +90,11 @@ export function efficiencyReport(options: {
 		const end = Date.parse(options.endedAt ?? "") || Date.now();
 		if (Number.isFinite(start) && Number.isFinite(end) && end >= start) elapsedMs = end - start;
 	}
-	const overrun = options.budgetMs != null && elapsedMs != null && elapsedMs > options.budgetMs;
+	const pacing = options.outputType || options.nodeDurationsMs
+		? computeNodePacing({ outputType: options.outputType, loggedStates: options.loggedStates, nodeDurationsMs: options.nodeDurationsMs })
+		: undefined;
+	const budget = options.budgetMs ?? pacing?.totalBudgetMs;
+	const overrun = budget != null && elapsedMs != null && elapsedMs > budget;
 	let issue: string | undefined;
 	if (skips.length > 0) issue = `skip-axes: ${skips.join("; ")}`;
 	else if (unbounded) issue = `unbounded-search: ${options.diagnostics?.unboundedSearch[0]}`;
@@ -62,9 +108,10 @@ export function efficiencyReport(options: {
 		yieldEarly,
 		overrun,
 		elapsedMs,
-		budgetMs: options.budgetMs,
+		budgetMs: budget,
 		pendingAtExit,
 		unboundedSearch: unbounded,
+		nodePacing: pacing,
 		issue,
 	};
 }

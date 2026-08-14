@@ -27,10 +27,10 @@ export function heldOutRegressed(ledger: LedgerIndex, currentKey: string): boole
 	}
 	for (const records of byKey.values()) {
 		const sorted = [...records].sort((left, right) => left.at.localeCompare(right.at));
-		let seenPass = false;
-		for (const record of sorted) {
-			if (record.kind === "PASS") seenPass = true;
-			if (seenPass && record.kind === "FAIL") return true;
+		const hadPass = sorted.some(record => record.kind === "PASS");
+		const latest = sorted[sorted.length - 1];
+		if (hadPass && latest && (latest.kind === "FAIL" || latest.kind === "REJECTED_EVOLUTION")) {
+			return true;
 		}
 	}
 	return false;

@@ -1043,6 +1043,31 @@ describe("Codex historical traces", () => {
 		expect(report.spawnedTasks).toBe(1);
 		expect(report.kind).toBe("codex-development");
 	});
+
+	test("node soft SLA pacing allocates journal vs doctoral budgets", async () => {
+		const { computeNodePacing } = await import("./efficiency");
+		const journal = computeNodePacing({
+			outputType: "JOURNAL_ARTICLE",
+			nodeDurationsMs: { PRIOR_CLAIM_DRAIN: 500_000, RECENT_FRONTIER: 100_000 },
+		});
+		expect(journal.totalBudgetMs).toBe(2_700_000);
+		expect(journal.nodeOverruns).toContain("PRIOR_CLAIM_DRAIN (500000ms > 360000ms)");
+
+		const doctoral = computeNodePacing({
+			outputType: "DOCTORAL_DISSERTATION",
+			nodeDurationsMs: { PRIOR_CLAIM_DRAIN: 500_000 },
+		});
+		expect(doctoral.totalBudgetMs).toBe(10_800_000);
+		expect(doctoral.nodeOverruns).toHaveLength(0);
+	});
+
+	test("isolated run root allocator creates and cleans up tmp dir", async () => {
+		const { allocateIsolatedRunRoot, cleanupIsolatedRunRoot } = await import("./isolate");
+		const root = await allocateIsolatedRunRoot("cleanup-test");
+		expect(root).toContain("sif-cleanup-test-");
+		await cleanupIsolatedRunRoot(root);
+		expect(await Bun.file(root).exists()).toBeFalse();
+	});
 });
 
 

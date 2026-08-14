@@ -8,6 +8,7 @@ import { ingestLiveRun } from "./ingest";
 import { regressionAwareAccept, heldOutRegressed } from "./accept";
 import { classifyFiles, loadImpactSurfaces } from "./impact";
 import { appendLedger, artifactHash, findReusablePass, loadLedger, reuseKey } from "./ledger";
+import { consolidateFlaws } from "./flaws";
 import { lockBump } from "./lock-bump";
 import { buildPlan, impactSignature } from "./plan";
 import { attributeFailure } from "./repair";
@@ -296,6 +297,19 @@ async function replay(argv: string[]): Promise<void> {
 	if (state.next_required_action !== "REPLAY" && state.next_required_action !== "REPAIR") {
 		throw new Error(`replay requires REPAIR/REPLAY, found ${state.next_required_action}`);
 	}
+	const workspace = workspaceSnapshot();
+	const files = workspace.files;
+	const surfaces = await loadImpactSurfaces();
+	const impact = classifyFiles(files, surfaces);
+	const signature = sha256(impactSignature(impact, files));
+	state.harnessHead = workspace.head;
+	state.workingTreeDirty = workspace.dirty;
+	state.delta = {
+		files,
+		classes: impact.classes,
+		signature,
+		unknownFiles: impact.unknownFiles.length > 0 ? impact.unknownFiles : undefined,
+	};
 	state.next_required_action = "REPLAY";
 	const step = state.plan.steps.find(item => item.id === state.stop?.stepId);
 	if (!step) throw new Error("STOP step is missing from the plan");
@@ -390,7 +404,13 @@ async function main(): Promise<void> {
 		} : report, null, 2)}\n`);
 		return;
 	}
-	throw new Error("usage: bun sif/cli.ts status|iterate|replay|ingest|trace|lock-bump|certify");
+	if (command === "flaws") {
+		const ledger = await loadLedger();
+		const flaws = consolidateFlaws(ledger);
+		process.stdout.write(`${JSON.stringify({ sif: "FLAWS", count: flaws.length, flaws }, null, 2)}\n`);
+		return;
+	}
+	throw new Error("usage: bun sif/cli.ts status|iterate|replay|ingest|trace|flaws|lock-bump|certify");
 }
 
 await main();

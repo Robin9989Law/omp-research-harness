@@ -5,6 +5,7 @@ export type TerminalKind = "in_progress" | "honest_success" | "honest_negative" 
 export interface WorkflowSnapshot {
 	active_state?: string;
 	novelty_level?: string;
+	output_type?: string;
 	next_required_action?: string;
 	decision_log?: Array<{ state?: string; action?: string; at?: string }>;
 }

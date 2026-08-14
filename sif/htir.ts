@@ -110,20 +110,66 @@ export function emptyHtir(researchRoot?: string): Htir {
 
 export function compileTraceLinks(steps: TraceStep[]): TraceLink[] {
 	const links: TraceLink[] = [];
-	for (let index = 1; index < steps.length; index += 1) {
-		const previous = steps[index - 1]!;
-		const current = steps[index]!;
-		if (previous.name === "iph_advance" && current.name === "iph_advance" && previous.targetState && previous.targetState === current.targetState) {
-			links.push({ sourceId: previous.id, targetId: current.id, kind: "control", relation: "retry" });
-		} else if (previous.name === "task" || (previous.name === "hub" && (previous.op === "wait" || previous.op === "jobs"))) {
-			links.push({ sourceId: previous.id, targetId: current.id, kind: "control", relation: "delegate" });
-		} else if (current.name === "iph_validate") {
-			links.push({ sourceId: previous.id, targetId: current.id, kind: "control", relation: "validate" });
-		} else if (previous.name === "iph_validate" && current.name === "iph_advance") {
-			links.push({ sourceId: previous.id, targetId: current.id, kind: "control", relation: "finalize" });
+	const seen = new Set<string>();
+	const addLink = (link: TraceLink) => {
+		const key = `${link.sourceId}->${link.targetId}:${link.kind}:${link.relation}`;
+		if (!seen.has(key)) {
+			seen.add(key);
+			links.push(link);
 		}
-		if ((previous.name === "iph_status" || previous.name === "iph_transition_plan") && current.name === "iph_advance") {
-			links.push({ sourceId: previous.id, targetId: current.id, kind: "data", relation: "produces" });
+	};
+
+	let lastPlanOrStatus: TraceStep | undefined;
+	let lastValidate: TraceStep | undefined;
+	let lastAdvance: TraceStep | undefined;
+	let lastTask: TraceStep | undefined;
+
+	for (let index = 0; index < steps.length; index += 1) {
+		const current = steps[index]!;
+		const previous = index > 0 ? steps[index - 1] : undefined;
+
+		if (current.name === "iph_status" || current.name === "iph_transition_plan") {
+			lastPlanOrStatus = current;
+		}
+
+		if (current.name === "iph_validate") {
+			lastValidate = current;
+			if (previous && previous.id !== current.id) {
+				addLink({ sourceId: previous.id, targetId: current.id, kind: "control", relation: "validate" });
+			} else if (lastPlanOrStatus && lastPlanOrStatus.id !== current.id) {
+				addLink({ sourceId: lastPlanOrStatus.id, targetId: current.id, kind: "control", relation: "validate" });
+			}
+		}
+
+		if (current.name === "task" || (current.name === "hub" && (current.op === "wait" || current.op === "jobs"))) {
+			lastTask = current;
+			if (previous && previous.id !== current.id && previous.name !== current.name) {
+				addLink({ sourceId: previous.id, targetId: current.id, kind: "control", relation: "delegate" });
+			}
+		}
+
+		if (current.name === "task:subagent:lifecycle" || (current.role && current.role !== "M3" && current.role !== "default")) {
+			if (lastTask && lastTask.id !== current.id) {
+				addLink({ sourceId: lastTask.id, targetId: current.id, kind: "control", relation: "delegate" });
+			}
+		}
+
+		if (current.name === "iph_advance") {
+			if (lastAdvance && lastAdvance.targetState && lastAdvance.targetState === current.targetState && lastAdvance.id !== current.id) {
+				addLink({ sourceId: lastAdvance.id, targetId: current.id, kind: "control", relation: "retry" });
+			}
+			if (lastPlanOrStatus && lastPlanOrStatus.id !== current.id) {
+				addLink({ sourceId: lastPlanOrStatus.id, targetId: current.id, kind: "data", relation: "produces" });
+			}
+			if (lastValidate && lastValidate.id !== current.id) {
+				addLink({ sourceId: lastValidate.id, targetId: current.id, kind: "control", relation: "finalize" });
+			} else if (previous && previous.id !== current.id && previous.name !== "iph_advance") {
+				addLink({ sourceId: previous.id, targetId: current.id, kind: "control", relation: "finalize" });
+			}
+			lastAdvance = current;
+			lastPlanOrStatus = undefined;
+			lastValidate = undefined;
+			lastTask = undefined;
 		}
 	}
 	return links;

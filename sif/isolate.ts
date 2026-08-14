@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import type { PlanStep } from "./types";
@@ -16,6 +16,13 @@ export interface IsolatedTrial {
 export async function allocateIsolatedRunRoot(label: string): Promise<string> {
 	const parent = await mkdtemp(path.join(tmpdir(), `sif-${label.replace(/[^a-zA-Z0-9_-]/g, "")}-`));
 	return path.join(parent, "trial");
+}
+
+export async function cleanupIsolatedRunRoot(runRoot: string): Promise<void> {
+	const parent = path.dirname(runRoot);
+	if (parent.includes("sif-") && parent.startsWith(tmpdir())) {
+		await rm(parent, { recursive: true, force: true });
+	}
 }
 
 export function l5IsolatedTrials(options: {
