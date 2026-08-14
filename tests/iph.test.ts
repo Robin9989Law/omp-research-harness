@@ -23,6 +23,7 @@ import {
 	sanitizeSpecialistTaskInput,
 	sealRuntimeReview,
 	shouldContinueSessionStop,
+	specialistDispositionIssue,
 	transitionPlanForState,
 	validateLifecycleState,
 	verifySkillLock,
@@ -73,6 +74,19 @@ describe("read-only STOP visibility", () => {
 });
 
 describe("M3 control-plane routing", () => {
+	test("requires an explicit, reasoned disposition without treating specialist completion as authority", () => {
+		expect(specialistDispositionIssue("frontier-auditor", undefined, undefined, undefined)).toContain("specialistAgentId");
+		expect(specialistDispositionIssue("frontier-auditor", "FrontierAudit", undefined, undefined)).toContain("specialistDisposition");
+		expect(specialistDispositionIssue("frontier-auditor", "FrontierAudit", "OVERRIDDEN", undefined)).toContain("specialistRationale");
+		expect(specialistDispositionIssue(
+			"frontier-auditor",
+			"FrontierAudit",
+			"OVERRIDDEN",
+			"The distinct-URL objection has no contract basis; the validator accepts role-correct reuse.",
+		)).toBeUndefined();
+		expect(specialistDispositionIssue(undefined, undefined, undefined, undefined)).toBeUndefined();
+	});
+
 	test("accepts only formally completed specialists bound to the exact root and target", () => {
 		clearRuntimeRegistryForTests();
 		const binding = {

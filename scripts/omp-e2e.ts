@@ -38,6 +38,7 @@ try {
 		"iph_clear_lock",
 		"iph_handover",
 		"iph_register_exploration",
+		"iph_repair_artifact_pointer",
 		"iph_repair_collision_round",
 		"iph_review",
 		"iph_start_collision_round",
@@ -356,9 +357,35 @@ try {
 	assert(Array.isArray(resumedState.blocked_reasons) && resumedState.blocked_reasons.length === 0, "BLOCKED reasons survived recovery");
 	assert(!existsSync(path.join(root, ".workflow_stop.lock")), "successful BLOCKED resume retained STOP lock");
 
-	resumedState.active_state = "PRIOR_CLAIM_DRAIN";
-	resumedState.resume_state = "PRIOR_CLAIM_DRAIN";
+	const ledgerHeader =
+		"registry_id,canonical_url,identity_verification_url,publication_verification_url,peer_review_verification_url,status,checked_at,role\n";
+	const oldLedgerPath = path.join(root, "near_neighbor_url_ledger.csv");
+	const correctedLedgerPath = path.join(root, "near_neighbor_url_ledger.v2.csv");
+	const oldLedger = `${ledgerHeader}W-TEST,https://example.org/work,https://example.org/work,https://example.org/work,https://example.org/work,VERIFIED,2026-08-14,original evidence\n`;
+	const correctedLedger = `${ledgerHeader}W-TEST,https://example.org/work,https://example.org/work,https://example.org/work,https://example.org/work,VERIFIED,2026-08-14,versioned correction\n`;
+	await writeFile(oldLedgerPath, oldLedger);
+	await writeFile(correctedLedgerPath, correctedLedger);
+	resumedState.artifacts.url_ledger = "near_neighbor_url_ledger.csv";
 	await writeFile(statePath, `${JSON.stringify(resumedState, null, 2)}\n`);
+	const repairedEvidencePointer = await execute(
+		"iph_repair_artifact_pointer",
+		{
+			recoveryNote: "replace an active evidence ledger without rewriting its historical version",
+			stateArtifacts: ["url_ledger=near_neighbor_url_ledger.v2.csv"],
+			nextAction: "Drain prior-round claims before frontier search.",
+			strict: true,
+		},
+		main,
+	);
+	assert(!repairedEvidencePointer.isError, `versioned evidence repair failed: ${JSON.stringify(repairedEvidencePointer)}`);
+	const repairedState = JSON.parse(await readFile(statePath, "utf8"));
+	assert(repairedState.artifacts?.url_ledger === "near_neighbor_url_ledger.v2.csv", "repair omitted the versioned ledger pointer");
+	assert(await readFile(oldLedgerPath, "utf8") === oldLedger, "repair rewrote the historical evidence ledger");
+	assert(await readFile(correctedLedgerPath, "utf8") === correctedLedger, "repair rewrote the corrected evidence ledger");
+
+	repairedState.active_state = "PRIOR_CLAIM_DRAIN";
+	repairedState.resume_state = "PRIOR_CLAIM_DRAIN";
+	await writeFile(statePath, `${JSON.stringify(repairedState, null, 2)}\n`);
 	const specialistCall = {
 		type: "tool_call",
 		toolCallId: "frontier-runtime-binding",
@@ -395,7 +422,7 @@ try {
 		isError: false,
 	} satisfies ToolResultEvent, main);
 
-	process.stdout.write("omp_e2e=READY loader=real tools=11 hooks=rollback specialist-schema=sanitized specialist=lifecycle-bound transition=transactional blocked=committed+resumed frozen=decision-log mutable=guarded recovery=artifact-map root=nested reviewer=lifecycle\n");
+	process.stdout.write("omp_e2e=READY loader=real tools=12 hooks=rollback specialist-schema=sanitized specialist=lifecycle-bound transition=transactional blocked=committed+resumed frozen=decision-log mutable=guarded recovery=artifact-map+versioned-evidence root=nested reviewer=lifecycle\n");
 } finally {
 	await rm(root, { recursive: true, force: true });
 }

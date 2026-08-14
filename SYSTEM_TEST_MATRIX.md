@@ -47,10 +47,12 @@
 | F8 | reviewer 自审或主 agent 改审计 | 拒绝或逐字节回滚 | reviewer/protected artifact 测试 |
 | F9 | 未授权计算 | tool_call 前拦截 | compute preflight 测试 |
 | F10 | lifecycle、skill commit/hash 或安装中途漂移 | STOP 或事务回滚 | lock/install/package E2E |
-| F11 | 工具已注册但未挂到模型可见工具面 | 11 个 IPH 工具全部 essential | 真实 OMP loader 可见性断言 + M3 回合 |
+| F11 | 工具已注册但未挂到模型可见工具面 | 12 个 IPH 工具全部 essential | 真实 OMP loader 可见性断言 + M3 回合 |
 | F12 | specialist 先发 PASS 消息、正式 completion 尚未落地 | 身份门识别 started 并短暂等待正式 completion；凭证绑定 research root + target | lifecycle 竞态单测 + 真实 M3 单节点重放 |
 | F13 | specialist 从模糊术语创造不存在的 JSON 排序约束 | FAIL 必须引用精确规则/schema/issue；明确 false-first 与 OCCUPIES 极性 | agent 合同断言 + 真实 GPT-5.6-sol 失败轨迹 |
 | F14 | specialist 已产出 READY gate，却把正式 completion 时间用于无界可选检索 | gate closure 与 exploration 分离；超时身份不可复用，draft 可由新任务复核续接 | agent 合同断言 + 15 分钟真实超时轨迹 + 续接重放 |
+| F15 | 为满足自造的 URL distinctness，把 arXiv 预印本写成同行评审证明 | URL 字段按证据角色校验；预印本域不得证明 `PEER_REVIEWED_*`；活动 ledger 使用版本化 state pointer | Python 正反测试 + 真实 M3 语义逃逸轨迹 |
+| F16 | specialist 已完成但结论与权威规则冲突 | 允许 M3 接受或推翻，但迁移必须记录 disposition 及证据/规则/validator 依据 | disposition 合同单测 + decision note 审计 |
 
 ## 4. 分层测试顺序
 

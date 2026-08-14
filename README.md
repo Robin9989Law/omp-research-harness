@@ -200,7 +200,7 @@ validator。
 本项目用 [SYSTEM_TEST_MATRIX.md](SYSTEM_TEST_MATRIX.md) 管理完整验证面，并用
 [AGENT_NATIVE_ENGINEERING.md](AGENT_NATIVE_ENGINEERING.md) 固化面向 Agent 用户的接口、生命周期、
 可靠性和可观测准则：23 个正向
-状态节点、22 条迁移、专家角色路由、正负 N0 终态、14 类故障注入、STOP/BLOCKED 恢复、事务回滚、
+状态节点、22 条迁移、专家角色路由、正负 N0 终态、16 类故障注入、STOP/BLOCKED 恢复、事务回滚、
 防篡改、计算门、安装和打包。升级固定按静态拓扑 → 单元 → 真实 OMP 组件 → 故障注入
 → 部署 → 真实 M3 单步重放执行，首错即停，不靠重复清锁碰运气。
 
@@ -346,14 +346,18 @@ claim profile：【THEORY / ALGORITHM / MIXED】
 | `/iph-status` | strict validate，并生成机器状态与交接报告 |
 | `/iph-review` | 派发独立 reviewer，绑定真实 task/session provenance |
 
-插件还向 OMP 注册 11 个底层工具：只读 status、transition plan、bootstrap、validate、advance、碰撞轮次创建/修复、review
-封印、STOP 解锁、探索登记和 handover。正常使用时不需要记住这些工具名，斜杠命令和注入的
+插件还向 OMP 注册 12 个底层工具：只读 status、transition plan、bootstrap、validate、advance、碰撞轮次创建/修复、review
+封印、STOP 解锁、版本化证据指针修复、探索登记和 handover。正常使用时不需要记住这些工具名，斜杠命令和注入的
 机器状态会引导 agent 选择正确工具。
 
 当 transition plan 指定 specialist 时，M3 只需给 `task` 传 `context` 和
 `tasks[].name/agent/task`。插件会移除调用方临时生成的 `outputSchema` / `schemaMode`，避免
 长 JSON Schema 在传输中截断导致委派预检失败。`iph_*` 工具始终按原名直接调用，不使用
 `ipc_call` 等包装层。
+
+specialist 正式完成只证明任务身份与生命周期，不代表其结论自动正确。通过专属迁移门时，
+M3 必须记录 `specialistDisposition=ACCEPTED|OVERRIDDEN` 和 `specialistRationale`：可以用精确合同、
+证据或 validator 依据推翻专家，但不能静默掩盖分歧。
 
 ### 如何理解状态
 

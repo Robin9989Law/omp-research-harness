@@ -143,6 +143,7 @@ const CLI_SUBCOMMANDS = new Set([
 	"repair-collision-round",
 	"review",
 	"clear-lock",
+	"repair-artifact-pointer",
 	"register-exploration",
 	"handover",
 ]);
@@ -156,6 +157,7 @@ const IPH_TOOL_NAMES = new Set([
 	"iph_repair_collision_round",
 	"iph_review",
 	"iph_clear_lock",
+	"iph_repair_artifact_pointer",
 	"iph_register_exploration",
 	"iph_handover",
 ]);
@@ -211,6 +213,7 @@ const TRANSITION_PLANS: Record<string, TransitionPlan> = {
 			"literature_registry=near_neighbor_registry.json",
 			"claim_registry=literature_claim_registry.json",
 			"frontier_coverage=frontier_coverage.json",
+			"url_ledger=near_neighbor_url_ledger.csv",
 		],
 		immutableArtifacts: [],
 		forbidden: ["claim synthesis", "full-text batching", "research computation"],
@@ -636,6 +639,23 @@ export function transitionPlanForState(state: WorkflowState | undefined): Transi
 
 export function requiredSpecialistForTarget(target: string): TransitionPlan["specialist"] {
 	return Object.values(TRANSITION_PLANS).find(plan => plan.target === target)?.specialist;
+}
+
+export type SpecialistDisposition = "ACCEPTED" | "OVERRIDDEN";
+
+export function specialistDispositionIssue(
+	requiredSpecialist: string | undefined,
+	specialistAgentId: string | undefined,
+	disposition: SpecialistDisposition | undefined,
+	rationale: string | undefined,
+): string | undefined {
+	if (!requiredSpecialist) return undefined;
+	if (!specialistAgentId) return `requires a completed ${requiredSpecialist} task and its exact specialistAgentId`;
+	if (!disposition) return `requires an explicit specialistDisposition (ACCEPTED or OVERRIDDEN) for ${specialistAgentId}`;
+	if (!rationale?.trim()) {
+		return `requires specialistRationale stating the evidence, rule, or validator basis for ${disposition}`;
+	}
+	return undefined;
 }
 
 export function mutableArtifactConflicts(artifacts: string[], assignments: string[]): string[] {
@@ -1702,6 +1722,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 						allowedFields: ["context", "tasks[].name", "tasks[].agent", "tasks[].task"],
 						omitFields: ["outputSchema", "schemaMode"],
 						completion: "Wait for the task to complete and pass its exact agent ID as specialistAgentId.",
+						disposition: "Record ACCEPTED or OVERRIDDEN plus the evidence, rule, or validator rationale. Completion proves identity, not correctness.",
 					} : null,
 					rules: [
 						...AGENT_NATIVE_EXECUTION_POLICY,
@@ -1740,6 +1761,8 @@ export default function iphExtension(pi: ExtensionAPI) {
 			contribution: z.enum(["NONE", "M", "A", "B", "C"]).optional(),
 			blockedReason: z.string().optional(),
 			specialistAgentId: z.string().min(1).optional().describe("Completed OMP task agent ID required for frontier, layer, atomic-claim, and collision gates"),
+			specialistDisposition: z.enum(["ACCEPTED", "OVERRIDDEN"]).optional().describe("Required at specialist gates: accept the peer conclusion or explicitly override it"),
+			specialistRationale: z.string().min(1).optional().describe("Required at specialist gates: evidence, contract rule, or validator basis for the disposition"),
 			strict: strictField,
 			root: rootField,
 		}),
@@ -1754,6 +1777,8 @@ export default function iphExtension(pi: ExtensionAPI) {
 				contribution?: string;
 				blockedReason?: string;
 				specialistAgentId?: string;
+				specialistDisposition?: SpecialistDisposition;
+				specialistRationale?: string;
 				strict: boolean;
 				root?: string;
 			};
@@ -1767,14 +1792,20 @@ export default function iphExtension(pi: ExtensionAPI) {
 			}
 			const requiredSpecialist = requiredSpecialistForTarget(input.to);
 			if (requiredSpecialist) {
-				if (!input.specialistAgentId) {
+				const dispositionIssue = specialistDispositionIssue(
+					requiredSpecialist,
+					input.specialistAgentId,
+					input.specialistDisposition,
+					input.specialistRationale,
+				);
+				if (dispositionIssue) {
 					return toolResult(blockedResult(
 						root,
-						`transition to ${input.to} requires a completed ${requiredSpecialist} task and its exact specialistAgentId`,
+						`transition to ${input.to} ${dispositionIssue}`,
 					));
 				}
 				const completion = await waitForSpecialistCompletion(
-					input.specialistAgentId,
+					input.specialistAgentId!,
 					requiredSpecialist,
 					root,
 					input.to,
@@ -1787,7 +1818,10 @@ export default function iphExtension(pi: ExtensionAPI) {
 					));
 				}
 			}
-			const args = ["--to", input.to, "--note", input.note, "--next-action", input.nextAction];
+			const transitionNote = requiredSpecialist
+				? `specialist=${input.specialistAgentId}; disposition=${input.specialistDisposition}; rationale=${input.specialistRationale}; ${input.note}`
+				: input.note;
+			const args = ["--to", input.to, "--note", transitionNote, "--next-action", input.nextAction];
 			if (input.strict) args.push("--strict-new-checks");
 			for (const gate of input.gates) args.push("--set-gate", gate);
 			for (const artifact of input.artifacts) args.push("--artifact", artifact);
@@ -1887,6 +1921,28 @@ export default function iphExtension(pi: ExtensionAPI) {
 			if (input.nextAction) args.push("--next-action", input.nextAction);
 			if (input.resumeBlocked) args.push("--resume-blocked");
 			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, input.root), "clear-lock", args, signal));
+		},
+	});
+
+	pi.registerTool({
+		name: "iph_repair_artifact_pointer",
+		label: "IPH Repair Evidence Pointer",
+		description: "Preserve the historical evidence file and hashes, atomically repoint an active state artifact to a versioned correction, validate, and roll back on failure",
+		approval: "write",
+		loadMode: "essential",
+		parameters: z.object({
+			recoveryNote: z.string().min(1),
+			stateArtifacts: z.array(z.string()).min(1).describe("Versioned replacements such as url_ledger=near_neighbor_url_ledger.v2.csv"),
+			nextAction: z.string().min(1).optional(),
+			strict: strictField,
+			root: rootField,
+		}),
+		async execute(_id, params, signal, _update, ctx) {
+			const input = params as { recoveryNote: string; stateArtifacts: string[]; nextAction?: string; strict: boolean; root?: string };
+			const args = ["--recovery-note", input.recoveryNote, ...(input.strict ? ["--strict-new-checks"] : [])];
+			for (const artifact of input.stateArtifacts) args.push("--set-artifact", artifact);
+			if (input.nextAction) args.push("--next-action", input.nextAction);
+			return toolResult(await runIph(resolveResearchRoot(ctx.cwd, input.root), "repair-artifact-pointer", args, signal));
 		},
 	});
 

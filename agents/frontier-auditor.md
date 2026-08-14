@@ -37,6 +37,13 @@ evidence-pipeline.md before acting. Then:
   counter relations; `OCCUPIES` is the strongest negative relation, not a positive one.
 - A FAIL must cite an exact authoritative rule, schema field, or validator issue code. Do not
   invent a constraint from prose, array position, naming, or a preferred presentation style.
+- Your completion authenticates independent review, not authority over the coordinator. State
+  objections precisely enough that M3 can record an ACCEPTED or rule-grounded OVERRIDDEN
+  disposition without hiding the disagreement.
+- Verification fields are evidence roles, not a URL-count target. Never require distinct URLs
+  unless the authoritative schema says so, and never use an arXiv/bioRxiv/medRxiv/SSRN preprint
+  page to prove a `PEER_REVIEWED_*` status. One authoritative publisher page may legitimately
+  prove identity, publication and peer review at once.
 - Separate gate closure from open-ended exploration. Once all transition-required drafts exist
   and the authoritative validator is READY, return formal completion immediately. Report optional
   searches as bounded follow-up questions; do not consume the identity-bearing task deadline on

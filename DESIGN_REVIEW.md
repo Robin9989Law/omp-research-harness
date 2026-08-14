@@ -11,8 +11,8 @@
 2. `IPH_SKILL_DIR` 是显式运行时合同。未设置时只检查用户目录下的标准技能位置，
    不写死开发机绝对路径；找不到时返回 `BLOCKED`。运行时还对固定上游 commit 的核心
    文档与全部 Python 脚本逐文件验 SHA-256，不猜测、复制或静默升级 validator。
-3. iph 8 个 CLI 子命令逐一注册为工具；另加 `iph_bootstrap`、只读 `iph_status` 与
-   `iph_transition_plan`，共 11 个工具。
+3. iph 9 个 CLI 子命令逐一注册为工具；另加 `iph_bootstrap`、只读 `iph_status` 与
+   `iph_transition_plan`，共 12 个工具；版本化 evidence pointer 修复保留旧文件与哈希。
 4. `session_stop` 只对没有物理 STOP 锁、且不是 committed BLOCKED 的可修复 INVALID
    注入一次恢复动作。STOP/BLOCKED 直接停在 operator 边界，防止 M3 重复 validate。
 5. reviewer 由专用 `iph-reviewer` 子代理写产物，主代理不可写。`iph_review` 只接受
