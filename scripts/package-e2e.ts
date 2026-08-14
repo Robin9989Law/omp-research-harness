@@ -33,6 +33,7 @@ const root = await mkdtemp(path.join(tmpdir(), "research-harness-package-e2e-"))
 try {
 	const packOutput = await run(["npm", "pack", "--ignore-scripts", "--json", "--pack-destination", root], {
 		cwd: projectRoot,
+		env: { npm_config_cache: path.join(root, "npm-cache") },
 	});
 	const packed = parseNpmPackOutput(packOutput);
 	const filename = packed[0]?.filename;
@@ -52,7 +53,7 @@ try {
 		new EventBus(),
 	);
 	assert(loaded.errors.length === 0, `packed extension failed real OMP loading: ${JSON.stringify(loaded.errors)}`);
-	assert(loaded.extensions.length === 1 && loaded.extensions[0]!.tools.size === 10, "packed extension registered the wrong tool set");
+	assert(loaded.extensions.length === 1 && loaded.extensions[0]!.tools.size === 13, "packed extension registered the wrong tool set");
 
 	const isolatedAgent = path.join(root, "agent");
 	const installDryRun = await run([path.join(packageRoot, "scripts", "install-user-config.sh"), "install", "--dry-run"], {

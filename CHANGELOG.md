@@ -10,6 +10,8 @@
   agents 与 SYSTEM；系统矩阵拒绝会制造半装载假故障的 `-e` / `--no-extensions` 调试入口。
 - specialist 模型 provenance 改由 harness 从认证 session 的 `model_change` 自动读取并写入；
   disposition rationale 禁止自报模型，event-flow-manager 也不得把自己的 Flash 身份外推给其他任务。
+- release/package dry-run 改用自动清理的一次性 npm cache，不再受用户 `~/.npm` 权限或历史污染影响；
+  验收仍明确不执行 `npm publish`。
 
 ## 0.0.4 - 2026-08-14
 

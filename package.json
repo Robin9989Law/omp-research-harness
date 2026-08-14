@@ -38,7 +38,7 @@
     "typecheck": "tsc --noEmit",
     "check": "bun run typecheck && bun test && bun run test:system && bun run test:omp && bun run test:install && bun scripts/check-package.ts",
     "prepack": "bun run check",
-    "release:check": "npm pack --dry-run --json && bun run test:package"
+    "release:check": "bun scripts/release-check.ts"
   },
   "peerDependencies": {
     "@oh-my-pi/pi-coding-agent": ">=17.2.15 <18"

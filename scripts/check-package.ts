@@ -14,6 +14,7 @@ const required = [
 	"scripts/install-e2e.ts",
 	"scripts/package-e2e.ts",
 	"scripts/install-user-config.sh",
+	"scripts/release-check.ts",
 	"scripts/manage-user-config.ts",
 	"tsconfig.json",
 	"agents/atomic-claim-extractor.md",

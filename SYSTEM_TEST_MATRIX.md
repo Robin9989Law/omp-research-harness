@@ -62,6 +62,7 @@
 | F23 | M3 因 `task` 无 model 参数误报 specialist 回退到默认模型 | agent role 负责路由；实际模型只以 lifecycle `resolvedModel` / `model_change` 为证，缺证据报告 UNKNOWN | DeepSeek V4 Flash 真实 JSONL trace + agent/系统合同断言 |
 | F24 | 本地调试只用 `-e extensions/iph.ts`，或把 `--no-extensions` 与 `--plugin-dir` 混用，导致工具与 agent 只加载一半 | 源码调试统一使用 `scripts/run-local-omp.sh` 的完整 `--plugin-dir` 入口；半装载命令不进入标准测试 | runner 静态断言 + 两条真实失败轨迹 + 完整包成功重放 |
 | F25 | event-flow-manager 把自己的 Flash 身份外推给 layer-adjudicator，M3 再把错误身份写入 decision note | 模型身份从自由文本剥离；harness 直接读取认证 session 的 `model_change` 并自动记账，rationale 禁止自报模型；manager 只可标注自身模型 | session model-evidence 单测 + 真实 L2 错误归因轨迹 |
+| F26 | `npm pack --dry-run` 受用户 `~/.npm` 历史 root-owned 缓存污染而 EPERM | release/package E2E 使用一次性隔离 npm cache，结束后清理；不修改用户缓存，不建议 sudo | release-check 真实失败轨迹 + 隔离缓存重放 |
 
 ## 4. 分层测试顺序
 
