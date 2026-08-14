@@ -214,10 +214,15 @@ describe("M3 control-plane routing", () => {
 		expect(inspectSpecialistCompletion(
 			"Impostor", "frontier-auditor", "/tmp/research-events", "RECENT_FRONTIER",
 		).status).toBe("not_observed");
+		const mixedBinding = { ...binding, agents: new Set(["frontier-auditor", "scout", "event-flow-manager"]) };
+		recordSubagentLifecycle({ ...event("OptionalRead", "completed", "/tmp/optional.jsonl"), agent: "scout" }, mixedBinding);
+		recordSubagentLifecycle({ ...event("EventManager", "completed", "/tmp/manager.jsonl"), agent: "event-flow-manager" }, mixedBinding);
 		const snapshot = eventFlowSnapshot("/tmp/research-events", "RECENT_FRONTIER", "frontier-auditor");
 		expect(snapshot.counts.currentCompleted).toBe(1);
 		expect(snapshot.counts.currentStarted).toBe(0);
 		expect(snapshot.counts.conflicts).toBe(2);
+		expect(snapshot.counts.optional).toBe(1);
+		expect(snapshot.tasks.some(task => task.id === "EventManager")).toBeFalse();
 		expect(snapshot.recommendation).toBe("RECONCILE_CONFLICT");
 		expect(snapshot.stateChangeJustified).toBeFalse();
 	});

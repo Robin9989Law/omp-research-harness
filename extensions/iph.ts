@@ -850,7 +850,7 @@ export function inspectSpecialistCompletion(
 
 export function eventFlowSnapshot(researchRoot: string, expectedTarget?: string, expectedAgent?: string) {
 	const records = [...runtimeRegistry().values()]
-		.filter(record => record.researchRoot === researchRoot)
+		.filter(record => record.researchRoot === researchRoot && record.agent !== "event-flow-manager")
 		.sort((left, right) => left.firstSeenAt.localeCompare(right.firstSeenAt) || left.id.localeCompare(right.id));
 	const tasks = records.map(record => ({
 		id: record.id,
@@ -862,14 +862,14 @@ export function eventFlowSnapshot(researchRoot: string, expectedTarget?: string,
 			: record.target !== expectedTarget
 			? "STALE"
 			: record.agent !== expectedAgent
-				? "CONFLICT"
+				? "OPTIONAL"
 				: record.status === "started" ? "CURRENT_STARTED" : "CURRENT_TERMINAL",
 		firstSeenAt: record.firstSeenAt,
 		updatedAt: record.updatedAt,
 		eventCount: record.eventCount,
 		conflicts: record.conflicts,
 	}));
-	const current = tasks.filter(task => task.classification !== "STALE");
+	const current = tasks.filter(task => task.classification.startsWith("CURRENT_") || task.classification === "CONFLICT");
 	const conflicts = current.filter(task => task.classification === "CONFLICT");
 	const started = current.filter(task => task.classification === "CURRENT_STARTED");
 	const completed = current.filter(task => task.classification === "CURRENT_TERMINAL" && task.status === "completed");
@@ -891,6 +891,7 @@ export function eventFlowSnapshot(researchRoot: string, expectedTarget?: string,
 			currentCompleted: completed.length,
 			currentFailed: failed.length,
 			stale: tasks.filter(task => task.classification === "STALE").length,
+			optional: tasks.filter(task => task.classification === "OPTIONAL").length,
 			conflicts: conflicts.length,
 		},
 		tasks,
@@ -1747,9 +1748,6 @@ export default function iphExtension(pi: ExtensionAPI) {
 		const parentToolCallId = text(candidate?.parentToolCallId);
 		const binding = parentToolCallId ? specialistDispatches.get(parentToolCallId) : undefined;
 		recordSubagentLifecycle(payload, binding);
-		if (parentToolCallId && ["completed", "failed", "aborted"].includes(text(candidate?.status))) {
-			specialistDispatches.delete(parentToolCallId);
-		}
 	});
 	pi.on("session_shutdown", () => unsubscribeLifecycle());
 
@@ -2353,7 +2351,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 			const agents = new Set(tasks.flatMap(item => {
 				if (!item || typeof item !== "object" || Array.isArray(item)) return [];
 				const agent = text((item as Record<string, unknown>).agent);
-				return SPECIALIST_TASK_AGENTS.has(agent) && agent === plan?.specialist ? [agent] : [];
+				return agent ? [agent] : [];
 			}));
 			const target = text(plan?.target);
 			if (agents.size > 0 && target) {
