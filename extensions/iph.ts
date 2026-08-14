@@ -1432,6 +1432,18 @@ export function dropFrozenPointerArtifacts(
 	return { artifacts: kept, dropped };
 }
 
+export function frozenPointerIssue(artifacts: string[], assignments: string[]): string | undefined {
+	const sanitized = dropFrozenPointerArtifacts(artifacts, assignments);
+	if (sanitized.dropped.length > 0) {
+		return `mutable state pointer artifacts must not be frozen in decision_log: ${sanitized.dropped.join(", ")}`;
+	}
+	const conflicts = mutableArtifactConflicts(artifacts, assignments);
+	if (conflicts.length > 0) {
+		return `mutable state pointer artifacts must not be frozen in decision_log: ${conflicts.join(", ")}`;
+	}
+	return undefined;
+}
+
 export function mutableArtifactConflicts(artifacts: string[], assignments: string[]): string[] {
 	const immutable = new Set(artifacts.filter(canonicalRelativePath));
 	const conflicts = new Set<string>();
@@ -3012,14 +3024,11 @@ export default function iphExtension(pi: ExtensionAPI) {
 			if (targetIssue) {
 				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${targetIssue}`));
 			}
-			const sanitizedArtifacts = dropFrozenPointerArtifacts(input.artifacts, input.stateArtifacts ?? []);
-			const mutableConflicts = mutableArtifactConflicts(sanitizedArtifacts.artifacts, input.stateArtifacts ?? []);
-			if (mutableConflicts.length > 0) {
-				return toolResult(blockedResult(
-					root,
-					`mutable state pointer artifacts must not be frozen in decision_log: ${mutableConflicts.join(", ")}`,
-				));
+			const pointerIssue = frozenPointerIssue(input.artifacts, input.stateArtifacts ?? []);
+			if (pointerIssue) {
+				return toolResult(blockedResult(root, pointerIssue));
 			}
+			const sanitizedArtifacts = dropFrozenPointerArtifacts(input.artifacts, input.stateArtifacts ?? []);
 			const artifactScopeIssue = transitionArtifactScopeIssue(currentState, input.to, sanitizedArtifacts.artifacts);
 			if (artifactScopeIssue) {
 				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${artifactScopeIssue}`));

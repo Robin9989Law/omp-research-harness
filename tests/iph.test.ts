@@ -16,6 +16,7 @@ import {
 	EXIT_STATUS,
 	executableText,
 	dropFrozenPointerArtifacts,
+	frozenPointerIssue,
 	eventFlowSnapshot,
 	findResearchRoot,
 	inspectHarnessRun,
@@ -478,6 +479,14 @@ describe("M3 control-plane routing", () => {
 			artifacts: ["l1-card.md"],
 			dropped: [],
 		});
+		expect(frozenPointerIssue(
+			["near_neighbor_registry.json"],
+			["literature_registry=near_neighbor_registry.json"],
+		)).toContain("must not be frozen");
+		expect(frozenPointerIssue(
+			["scope_lock.md"],
+			["scope_lock=scope_lock.md"],
+		)).toBeUndefined();
 	});
 
 	test("persists specialist bindings across process-local registry clears", async () => {

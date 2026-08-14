@@ -4,7 +4,7 @@
 
 ```text
 status        读 sif/iteration_state.json
-iterate       跑计划中的下一步（首错即停）
+iterate       跑计划中的下一步（首错即停；干净树用 --base <branch> 评测已提交差）
 replay        从 STOP 步重放
 ingest        收口一场已结束（或 --snapshot）的连续研究会话
 trace         只读评分 Codex rollout / forensics 导出（不写账本，不能冒充 IPH live-run）

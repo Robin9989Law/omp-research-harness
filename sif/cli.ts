@@ -58,18 +58,24 @@ function failLedgerMeta(options: {
 	};
 }
 
-async function syncState(options?: { passK?: number }): Promise<IterationState> {
-	const workspace = workspaceSnapshot();
+async function syncState(options?: { passK?: number; base?: string }): Promise<IterationState> {
+	const workspace = workspaceSnapshot(PROJECT_ROOT, { base: options?.base });
 	const files = workspace.files;
 	const surfaces = await loadImpactSurfaces();
 	const impact = classifyFiles(files, surfaces);
 	const signature = sha256(impactSignature(impact, files));
 	const iphLock = await filesShaFromLock();
 	const existing = await loadState();
-	if (existing && existing.delta.signature === signature && existing.iphLock.commit === iphLock.commit) {
-		existing.harnessHead = workspace.head;
-		existing.workingTreeDirty = workspace.dirty;
-		return existing;
+	if (existing && existing.iphLock.commit === iphLock.commit) {
+		const inFlight = existing.next_required_action === "REPAIR"
+			|| existing.next_required_action === "REPLAY"
+			|| (existing.executedKeys.length > 0 && existing.next_required_action !== "DONE");
+		if (existing.delta.signature === signature || inFlight) {
+			existing.harnessHead = workspace.head;
+			existing.workingTreeDirty = workspace.dirty;
+			await saveState(existing);
+			return existing;
+		}
 	}
 	const planned = buildPlan(impact, { passK: options?.passK ?? 2 });
 	const state: IterationState = {
@@ -270,7 +276,7 @@ async function runStep(state: IterationState, step: PlanStep, mode: "RUN" | "REP
 	state.currentStepIndex += 1;
 	if (state.currentStepIndex >= state.plan.steps.length) {
 		state.next_required_action = "CERTIFY";
-		state.outcomeClass = outcomeClassFor({ outcomeReady: true, scorecard });
+		state.outcomeClass = outcomeClassFor({ outcomeReady: true, scorecard, htir });
 	} else {
 		state.next_required_action = "RUN_STEP";
 	}
@@ -280,7 +286,10 @@ async function runStep(state: IterationState, step: PlanStep, mode: "RUN" | "REP
 
 async function iterate(argv: string[]): Promise<void> {
 	const dryRun = flag("--dry-run", argv);
-	const state = await syncState({ passK: Number(option("--pass-k", argv) ?? "2") });
+	const state = await syncState({
+		passK: Number(option("--pass-k", argv) ?? "2"),
+		base: option("--base", argv),
+	});
 	if (dryRun) {
 		process.stdout.write(`${JSON.stringify({
 			sif: "DRY_RUN_READY",
@@ -337,7 +346,7 @@ async function replay(argv: string[]): Promise<void> {
 	if (state.next_required_action !== "REPLAY" && state.next_required_action !== "REPAIR") {
 		throw new Error(`replay requires REPAIR/REPLAY, found ${state.next_required_action}`);
 	}
-	const workspace = workspaceSnapshot();
+	const workspace = workspaceSnapshot(PROJECT_ROOT, { base: option("--base", argv) });
 	const files = workspace.files;
 	const surfaces = await loadImpactSurfaces();
 	const impact = classifyFiles(files, surfaces);

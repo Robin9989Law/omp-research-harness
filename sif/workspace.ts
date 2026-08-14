@@ -6,7 +6,14 @@ export function gitOutput(args: string[], cwd = PROJECT_ROOT): string {
 	return (result.stdout || "").trim();
 }
 
-export function workspaceSnapshot(cwd = PROJECT_ROOT): {
+export function committedDelta(base: string, cwd = PROJECT_ROOT): string[] {
+	return gitOutput(["diff", "--name-only", `${base}...HEAD`], cwd)
+		.split("\n")
+		.map(line => line.trim())
+		.filter(Boolean);
+}
+
+export function workspaceSnapshot(cwd = PROJECT_ROOT, options?: { base?: string }): {
 	head: string;
 	dirty: boolean;
 	files: string[];
@@ -20,6 +27,8 @@ export function workspaceSnapshot(cwd = PROJECT_ROOT): {
 		.split("\n")
 		.map(line => line.trim())
 		.filter(Boolean);
-	const files = [...new Set([...changed, ...untracked])].sort();
-	return { head, dirty: files.length > 0 || gitOutput(["status", "--porcelain"], cwd).length > 0, files };
+	const committed = options?.base ? committedDelta(options.base, cwd) : [];
+	const files = [...new Set([...changed, ...untracked, ...committed])].sort();
+	const dirty = gitOutput(["status", "--porcelain"], cwd).length > 0;
+	return { head, dirty, files };
 }

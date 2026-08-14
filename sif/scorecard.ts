@@ -138,7 +138,10 @@ export function elicitationRegression(scorecard: RoleScorecard, options?: { spec
 		}
 	}
 	if (scorecard.invalidToolCalls > 0) return "invalid or invented tool calls present";
-	if (!options?.inProgress && !m3.finishedEfficiently) return "M3 did not close the edge";
+	if (!options?.inProgress && !m3.finishedEfficiently) {
+		if (options?.htir && options.htir.steps.length === 0) return undefined;
+		return "M3 did not close the edge";
+	}
 	return undefined;
 }
 

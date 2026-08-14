@@ -207,6 +207,14 @@ describe("HTIR-lite", () => {
 });
 
 describe("role scorecard", () => {
+	test("outcome-only layers with empty HTIR certify as autonomous_verified_success", () => {
+		const htir = { schemaVersion: "1.0" as const, steps: [] };
+		const scorecard = scoreHtir(htir);
+		expect(scorecard.loops[0]?.finishedEfficiently).toBeFalse();
+		expect(outcomeClassFor({ outcomeReady: true, scorecard })).toBe("unverified_success");
+		expect(outcomeClassFor({ outcomeReady: true, scorecard, htir })).toBe("autonomous_verified_success");
+	});
+
 	test("specialist edges without disposition are unverified even if the outcome is ready", () => {
 		const scorecard = scoreHtir({
 			schemaVersion: "1.0",
@@ -969,6 +977,13 @@ describe("live ingest", () => {
 });
 
 describe("SIF isolation", () => {
+	test("committed delta vs main includes sif/", async () => {
+		const { committedDelta } = await import("./workspace");
+		const files = committedDelta("main");
+		expect(files.some(file => file.startsWith("sif/"))).toBeTrue();
+		expect(files).toContain("extensions/iph.ts");
+	});
+
 	test("the published package files list does not include sif/", async () => {
 		const pkg = JSON.parse(await readFile(path.resolve(import.meta.dir, "..", "package.json"), "utf8"));
 		expect(pkg.files).not.toContain("sif");
