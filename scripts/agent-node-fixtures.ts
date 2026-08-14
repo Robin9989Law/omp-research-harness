@@ -100,9 +100,15 @@ async function repairEpochOneFixture(root: string): Promise<string> {
 	const officialPage = "https://proceedings.mlr.press/v235/angelopoulos24a.html";
 	const officialPdf = "https://raw.githubusercontent.com/mlresearch/v235/main/assets/angelopoulos24a/angelopoulos24a.pdf";
 	const expectedPdfSha = "125fe807fe49dbbb491c2f7d835cf61b17174cfc4fef9f2a974d0d4eb294ddf1";
-	const pdfResponse = await fetch(officialPdf);
-	assert(pdfResponse.ok, `cannot fetch official PMLR PDF: ${pdfResponse.status}`);
-	const pdfBytes = new Uint8Array(await pdfResponse.arrayBuffer());
+	const cachePath = process.env.IPH_FIXTURE_PDF_CACHE?.trim();
+	let pdfBytes: Uint8Array;
+	if (cachePath) {
+		pdfBytes = await readFile(path.resolve(cachePath));
+	} else {
+		const pdfResponse = await fetch(officialPdf);
+		assert(pdfResponse.ok, `cannot fetch official PMLR PDF: ${pdfResponse.status}; set IPH_FIXTURE_PDF_CACHE to the pinned PDF for an offline run`);
+		pdfBytes = new Uint8Array(await pdfResponse.arrayBuffer());
+	}
 	assert(sha256(pdfBytes) === expectedPdfSha, "official PMLR PDF hash drifted; re-verify before updating the fixture pin");
 	await writeFile(path.join(root, "literature_archive", "W-0001.pdf"), pdfBytes);
 	await writeFile(path.join(root, "literature_archive", "W-0001.txt"), [

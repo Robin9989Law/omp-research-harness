@@ -63,6 +63,10 @@
 | F24 | 本地调试只用 `-e extensions/iph.ts`，或把 `--no-extensions` 与 `--plugin-dir` 混用，导致工具与 agent 只加载一半 | 源码调试统一使用 `scripts/run-local-omp.sh` 的完整 `--plugin-dir` 入口；半装载命令不进入标准测试 | runner 静态断言 + 两条真实失败轨迹 + 完整包成功重放 |
 | F25 | event-flow-manager 把自己的 Flash 身份外推给 layer-adjudicator，M3 再把错误身份写入 decision note | 模型身份从自由文本剥离；harness 直接读取认证 session 的 `model_change` 并自动记账，rationale 禁止自报模型；manager 只可标注自身模型 | session model-evidence 单测 + 真实 L2 错误归因轨迹 |
 | F26 | `npm pack --dry-run` 受用户 `~/.npm` 历史 root-owned 缓存污染而 EPERM | release/package E2E 使用一次性隔离 npm cache，结束后清理；不修改用户缓存，不建议 sudo | release-check 真实失败轨迹 + 隔离缓存重放 |
+| F27 | reviewer 在子任务内合法 `iph_review` 后，父 `task` 安全快照把 sealed state 当成越权修改回滚 | 父边界只接受同态 review state、runtime IDs、bundle hash、review hash 与 PASS/FAIL 语义全部一致的闭环；仅放行该 state 与唯一登记 JSON，其余变化照常回滚 | 真实 loader/hook E2E + Node 21 连续事务 E2E |
+| F28 | 把科学 FAIL 与 reviewer capability unavailable 混成同一失败 | 实质 FAIL 保持 review state/V2 或 V3，落 INVALID+STOP+required remediation；能力不可用禁止 seal，必须返回 `BLOCKED_CAPABILITY` 供 coordinator 提交 BLOCKED | PASS/FAIL/capability 三分支单测 + BLOCKED E2E |
+| F29 | validator 只校验 witness 命令字段与历史 output/hash，命令本身不存在仍可假绿 | fixture 生成时真实执行五条 witness 命令，逐项核对命令、exit code、stderr、stdout bytes 与 SHA-256；近邻 locator 使用官方 PDF 的真实章节/公式/定理 | 22 源状态 fixture matrix + witness 命令执行 |
+| F30 | 受限环境无法联网重新下载固定论文，导致系统测试不可复现 | `IPH_FIXTURE_PDF_CACHE` 接受已验证的固定 PDF；无论在线下载或离线缓存都必须命中同一 pinned SHA-256 | fresh offline fixture generation + 22/22 validator replay |
 
 ## 4. 分层测试顺序
 
@@ -86,6 +90,15 @@ M3 每一步先 `iph_status`、再 `iph_transition_plan`；可以分析全局路
 但一次只能提交计划中的一个 target。
 同一 state hash + 同一失败码不得第二次调用 validate/clear-lock。失败时保存 session、
 state hash、STOP lock、validation log 和工具调用序列，回到对应层修复后再重放。
+
+当前确定性回归另执行：
+
+```text
+bun run test:nodes -- --pdf-cache <pinned-pdf>
+```
+
+它分别证明 22 个源状态都能被权威 validator 接受、N0-1/N0-2/N0-3 不会被强推为正结果、
+以及 Node 18–22 能从明确授权连续提交到 COMPLETE。它不能替代 L5 的真实模型行为测试；两层结果必须分开报告。
 
 L6 不把单次成功率当作唯一指标，还记录无效工具调用、token/时延、规则冲突发现率、可复用新洞见和
 validator 拒绝率。测试结果用于删除压制 M3 全局推理的冗余步骤，并保留能提高事实质量和副作用安全的
@@ -114,3 +127,7 @@ validator 拒绝率。测试结果用于删除压制 M3 全局推理的冗余步
 - `bun run check`、`release:check`、`omp plugin doctor` 通过；
 - README、CHANGELOG、lock commit/hash 与 package version 一致；
 - 用户明确实测前不执行 `npm publish`。Git push 与 npm 发布是两个独立动作。
+
+截至 2026-08-14 当前工作区：确定性门已通过；真实模型重放在当前受限执行环境中于 provider 请求前
+被网络策略阻断（0 token、0 tool call），因此不得把 Node 17 修复后与 Node 18–22 报告为“真实 M3 已复测”。
+恢复模型网络后必须从 fresh fixture 重跑 L5，才可关闭最终实测门。

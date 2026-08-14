@@ -442,7 +442,7 @@ modelRoles:
 
 `configure` 只修改模型选择；`upgrade` 用于插件源码新增角色或 SYSTEM 变化后的整体同步。
 
-允许管理的角色是 `default`、`frontier`、`layer`、`atomic`、`collision`、`review`、`commit`。其他已有 OMP 角色会
+允许管理的角色是 `default`、`frontier`、`layer`、`atomic`、`collision`、`review`、`event`、`commit`。其他已有 OMP 角色会
 原样保留。
 
 ## 卸载
@@ -482,6 +482,7 @@ bun install --frozen-lockfile
 export IPH_SKILL_DIR=/absolute/path/to/innovation-proposition-hunting
 
 bun run check
+bun run test:nodes -- --pdf-cache /absolute/path/to/pinned-W-0001.pdf
 bun run release:check
 omp plugin link .
 omp plugin doctor @prcbooboo/omp-research-harness
@@ -491,6 +492,10 @@ omp plugin doctor @prcbooboo/omp-research-harness
 卸载 E2E，以及权威 IPH strict validation。CI 还会运行 authoritative IPH 的完整 pytest
 回归套件。npm 发布使用 GitHub OIDC trusted publishing 和 provenance，不在 workflow 中保存
 长期 npm token。
+
+`test:nodes` 会从 fresh fixture 重新验证 22 个源状态、N0-1/N0-2/N0-3 终态语义和 Node 18–22
+连续事务。`--pdf-cache` 不是跳过来源校验：缓存 PDF 仍必须命中代码固定的官方 SHA-256；有网络时也可
+省略该参数并从官方 PMLR 地址重新获取。这个确定性测试不能替代真实 M3/specialist 行为重放。
 
 ## 相关项目
 

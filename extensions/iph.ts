@@ -94,6 +94,11 @@ interface ProtectedSnapshot {
 	entries: Map<string, ProtectedEntry>;
 }
 
+interface PendingProtectedSnapshot {
+	snapshot: ProtectedSnapshot;
+	sanctionedReviewerTask: boolean;
+}
+
 interface FileTransactionSnapshot {
 	root: string;
 	entries: Map<string, Uint8Array | undefined>;
@@ -1316,17 +1321,20 @@ async function currentProtectedSnapshot(snapshot: ProtectedSnapshot): Promise<Pr
 	return captureProtectedSnapshot(snapshot.root, snapshot.includeReview, snapshot.allowNewReviewFiles, configured);
 }
 
-export async function restoreProtectedSnapshot(snapshot: ProtectedSnapshot): Promise<string[]> {
+export async function restoreProtectedSnapshot(
+	snapshot: ProtectedSnapshot,
+	options: {
+		allowModifiedPaths?: ReadonlySet<string>;
+		allowedNewReviewPaths?: ReadonlySet<string>;
+	} = {},
+): Promise<string[]> {
 	const current = await currentProtectedSnapshot(snapshot);
 	const changed = new Set<string>();
 	for (const relative of new Set([...snapshot.entries.keys(), ...current.entries.keys()])) {
+		if (options.allowModifiedPaths?.has(relative)) continue;
 		const newlyCreated = !snapshot.entries.has(relative) ? current.entries.get(relative) : undefined;
-		if (
-			snapshot.allowNewReviewFiles &&
-			isAllowedNewReviewEntry(relative, newlyCreated)
-		) {
-			continue;
-		}
+		if (options.allowedNewReviewPaths?.has(relative) && isAllowedNewReviewEntry(relative, newlyCreated)) continue;
+		if (!options.allowedNewReviewPaths && snapshot.allowNewReviewFiles && isAllowedNewReviewEntry(relative, newlyCreated)) continue;
 		if (!protectedEntryEqual(snapshot.entries.get(relative), current.entries.get(relative))) changed.add(relative);
 	}
 	if (changed.size === 0) return [];
@@ -1335,7 +1343,7 @@ export async function restoreProtectedSnapshot(snapshot: ProtectedSnapshot): Pro
 		await rm(path.join(snapshot.root, relative), { recursive: true, force: true });
 	}
 
-	const ordered = [...snapshot.entries.entries()].sort(([leftPath, left], [rightPath, right]) => {
+	const ordered = [...snapshot.entries.entries()].filter(([relative]) => changed.has(relative)).sort(([leftPath, left], [rightPath, right]) => {
 		if (left.kind === "directory" && right.kind !== "directory") return -1;
 		if (left.kind !== "directory" && right.kind === "directory") return 1;
 		return leftPath.localeCompare(rightPath);
@@ -1349,6 +1357,51 @@ export async function restoreProtectedSnapshot(snapshot: ProtectedSnapshot): Pro
 		} else await atomicWriteBytes(absolute, entry.bytes);
 	}
 	return [...changed].sort();
+}
+
+async function acceptedRuntimeReviewPath(snapshot: ProtectedSnapshot): Promise<string | undefined> {
+	const originalEntry = snapshot.entries.get(WORKFLOW_FILE);
+	if (originalEntry?.kind !== "file") return;
+	let original: WorkflowState;
+	try {
+		original = JSON.parse(Buffer.from(originalEntry.bytes).toString("utf8")) as WorkflowState;
+	} catch {
+		return;
+	}
+	const current = await readWorkflow(snapshot.root);
+	if (!current) return;
+	const active = text(original.active_state);
+	if (!["INDEPENDENT_REVIEW", "FINAL_VALIDITY_AUDIT"].includes(active) || text(current.active_state) !== active) return;
+	if (text(current.resume_state) !== text(original.resume_state)) return;
+	const audit = current.independent_audit;
+	const auditRelative = text(current.artifacts?.independent_audit);
+	if (!audit || !/^review_artifacts\/[^/]+\.json$/.test(auditRelative) || snapshot.entries.has(auditRelative)) return;
+	if (audit.capability_available !== true || !["PASS", "FAIL"].includes(text(audit.verdict))) return;
+	if (!text(audit.reviewer_agent_id) || !text(audit.reviewer_thread_id)) return;
+	if (text(audit.audited_bundle_sha256) !== text(current.claim_bundle_sha256)) return;
+	const expectedValidity = audit.verdict === "PASS"
+		? (active === "INDEPENDENT_REVIEW" ? "V3" : "V4")
+		: text(original.validity_level);
+	if (text(current.validity_level) !== expectedValidity) return;
+	if (audit.verdict === "FAIL" && !existsSync(path.join(snapshot.root, STOP_LOCK_FILE))) return;
+	if (audit.verdict === "PASS" && existsSync(path.join(snapshot.root, STOP_LOCK_FILE))) return;
+	const auditBytes = await readFile(path.join(snapshot.root, auditRelative)).catch(() => undefined);
+	if (!auditBytes) return;
+	if (createHash("sha256").update(auditBytes).digest("hex") !== text(current.review_artifact_sha256)) return;
+
+	const stable = (state: WorkflowState): string => {
+		const copy = structuredClone(state) as Record<string, unknown>;
+		delete copy.updated_at;
+		delete copy.validity_level;
+		delete copy.independent_audit;
+		delete copy.review_artifact_sha256;
+		if (audit.verdict === "FAIL") delete copy.next_required_action;
+		const artifacts = copy.artifacts as Record<string, unknown> | undefined;
+		if (artifacts) delete artifacts.independent_audit;
+		return JSON.stringify(copy);
+	};
+	if (stable(original) !== stable(current)) return;
+	return auditRelative;
 }
 
 function stageForState(state: WorkflowState): string {
@@ -1882,8 +1935,11 @@ export async function sealRuntimeReview(
 	if (audit.capability_available !== true && audit.capability_available !== false) {
 		return blockedResult(root, "review artifact must declare capability_available as a boolean");
 	}
-	if (verdict === "PASS" && audit.capability_available !== true) {
-		return blockedResult(root, "PASS is forbidden when reviewer capability is unavailable");
+	if (audit.capability_available !== true) {
+		return blockedResult(
+			root,
+			"reviewer capability unavailable: do not seal PASS or FAIL; return BLOCKED_CAPABILITY so the coordinator can commit BLOCKED+STOP",
+		);
 	}
 	if (verdict === "PASS" && !auditAnswersAreSubstantive(audit)) {
 		return blockedResult(
@@ -1950,11 +2006,12 @@ export async function sealRuntimeReview(
 		if (validated.exitCode !== expectedExit || !failLockPresent) {
 			await atomicWriteBytes(auditPath, originalAudit);
 			await restoreFileTransaction(transaction);
+			const diagnosis = [validated.stderr.trim(), validated.stdout.trim()].filter(Boolean).join("\n");
 			return {
 				status: "ERROR",
 				exitCode: 70,
 				stdout: "",
-				stderr: `review transaction expected exit ${expectedExit}${verdict === "FAIL" ? " with STOP lock" : ""}, observed exit ${validated.exitCode}${failLockPresent ? "" : " without STOP lock"}; transaction rolled back`,
+				stderr: `review transaction expected exit ${expectedExit}${verdict === "FAIL" ? " with STOP lock" : ""}, observed exit ${validated.exitCode}${failLockPresent ? "" : " without STOP lock"}; transaction rolled back${diagnosis ? `\nvalidator diagnosis:\n${diagnosis}` : ""}`,
 				root,
 			};
 		}
@@ -2026,7 +2083,7 @@ function renderStateContext(state: WorkflowState, lifecycleStage?: unknown): str
 export default function iphExtension(pi: ExtensionAPI) {
 	const z = pi.zod;
 	const lastStopFingerprint = new Map<string, string>();
-	const pendingSnapshots = new Map<string, ProtectedSnapshot>();
+	const pendingSnapshots = new Map<string, PendingProtectedSnapshot>();
 	const specialistDispatches = new Map<string, SpecialistDispatchBinding>();
 	const unsubscribeLifecycle = pi.events.on(SUBAGENT_LIFECYCLE_CHANNEL, payload => {
 		const candidate = payload && typeof payload === "object" && !Array.isArray(payload)
@@ -2669,12 +2726,15 @@ export default function iphExtension(pi: ExtensionAPI) {
 			try {
 				pendingSnapshots.set(
 					`${ctx.sessionManager.getSessionId()}\0${event.toolCallId}`,
-					await captureProtectedSnapshot(
+					{
+						snapshot: await captureProtectedSnapshot(
 						root,
 						true,
 						Boolean(reviewerIdentity) || sanctionedReviewerTask,
 						text(state.artifacts?.independent_audit),
-					),
+						),
+						sanctionedReviewerTask,
+					},
 				);
 			} catch (error) {
 				return {
@@ -2701,11 +2761,24 @@ export default function iphExtension(pi: ExtensionAPI) {
 
 	pi.on("tool_result", async (event, ctx) => {
 		const key = `${ctx.sessionManager.getSessionId()}\0${event.toolCallId}`;
-		const snapshot = pendingSnapshots.get(key);
-		if (!snapshot) return;
+		const pending = pendingSnapshots.get(key);
+		if (!pending) return;
 		pendingSnapshots.delete(key);
 		try {
-			const restored = await restoreProtectedSnapshot(snapshot);
+			const acceptedReviewPath = pending.sanctionedReviewerTask
+				? await acceptedRuntimeReviewPath(pending.snapshot)
+				: undefined;
+			const restored = await restoreProtectedSnapshot(
+				pending.snapshot,
+				pending.sanctionedReviewerTask
+					? {
+						allowModifiedPaths: acceptedReviewPath ? new Set([WORKFLOW_FILE]) : new Set(),
+						allowedNewReviewPaths: acceptedReviewPath
+							? new Set([REVIEW_DIR, acceptedReviewPath])
+							: new Set(),
+					}
+					: {},
+			);
 			if (restored.length === 0) return;
 			return {
 				content: [

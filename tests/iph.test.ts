@@ -689,6 +689,54 @@ describe("runtime-bound reviewer provenance", () => {
 			await rm(root, { recursive: true, force: true });
 		}
 	});
+
+	test("keeps capability unavailability distinct from substantive FAIL", async () => {
+		const skillDir = resolveSkillDir();
+		expect(skillDir).toBeTruthy();
+		const root = await mkdtemp(path.join(tmpdir(), "iph-runtime-review-unavailable-"));
+		try {
+			await cp(path.join(skillDir!, "tests", "fixtures", "minimal-valid-v3"), root, { recursive: true });
+			await rm(path.join(root, ".workflow_stop.lock"), { force: true });
+			const statePath = path.join(root, "workflow_state.json");
+			const state = JSON.parse(await readFile(statePath, "utf8"));
+			state.active_state = "INDEPENDENT_REVIEW";
+			state.resume_state = "INDEPENDENT_REVIEW";
+			state.validity_level = "V2";
+			state.independent_audit = {};
+			delete state.review_artifact_sha256;
+			delete state.artifacts.independent_audit;
+			await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+			await mkdir(path.join(root, "review_artifacts"), { recursive: true });
+			await writeFile(path.join(root, "review_artifacts", "unavailable.json"), `${JSON.stringify({
+				schema_version: "2.0",
+				capability_available: false,
+				author_agent_ids: ["author-m3"],
+				verdict: "FAIL",
+				required_remediation: "Restore the external reviewer capability before requesting another independent review.",
+				findings: [],
+			}, null, 2)}\n`);
+
+			const result = await sealRuntimeReview(
+				root,
+				"FAIL",
+				"review_artifacts/unavailable.json",
+				false,
+				{
+					reviewerAgentId: "omp-reviewer-unavailable-1",
+					reviewerThreadId: "omp-review-thread-unavailable-1",
+					sessionFile: "in-memory:omp-reviewer-unavailable-1",
+				},
+			);
+			expect(result.exitCode).toBe(2);
+			expect(result.stderr).toContain("BLOCKED_CAPABILITY");
+			const unchanged = JSON.parse(await readFile(statePath, "utf8"));
+			expect(unchanged.active_state).toBe("INDEPENDENT_REVIEW");
+			expect(unchanged.validity_level).toBe("V2");
+			expect(unchanged.independent_audit).toEqual({});
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("protected artifact rollback", () => {
@@ -745,6 +793,29 @@ describe("protected artifact rollback", () => {
 			await writeFile(path.join(root, "review_artifacts", "epoch-1-fail.json"), "{\"verdict\":\"FAIL\"}\n");
 			expect(await restoreProtectedSnapshot(snapshot)).toEqual([]);
 			expect(await readFile(path.join(root, "review_artifacts", "epoch-1-fail.json"), "utf8")).toContain("FAIL");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("preserves only the registered review delta at a sanctioned parent boundary", async () => {
+		const root = await mkdtemp(path.join(tmpdir(), "iph-parent-review-delta-"));
+		try {
+			await writeFile(path.join(root, "workflow_state.json"), "state-before\n");
+			await writeFile(path.join(root, "lifecycle_state.json"), "lifecycle-before\n");
+			const snapshot = await captureProtectedSnapshot(root, true, true);
+			await writeFile(path.join(root, "workflow_state.json"), "state-sealed-by-iph-review\n");
+			await mkdir(path.join(root, "review_artifacts"));
+			await writeFile(path.join(root, "review_artifacts", "registered.json"), "{\"verdict\":\"PASS\"}\n");
+			await writeFile(path.join(root, "review_artifacts", "stray.json"), "{\"not\":\"registered\"}\n");
+			const restored = await restoreProtectedSnapshot(snapshot, {
+				allowModifiedPaths: new Set(["workflow_state.json"]),
+				allowedNewReviewPaths: new Set(["review_artifacts", "review_artifacts/registered.json"]),
+			});
+			expect(restored).toContain("review_artifacts/stray.json");
+			expect(await readFile(path.join(root, "workflow_state.json"), "utf8")).toBe("state-sealed-by-iph-review\n");
+			expect(await readFile(path.join(root, "review_artifacts", "registered.json"), "utf8")).toContain("PASS");
+			await expect(readFile(path.join(root, "review_artifacts", "stray.json"), "utf8")).rejects.toThrow();
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

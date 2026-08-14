@@ -1,11 +1,11 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { loadExtensions } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
 import type { ExtensionContext, ToolCallEvent, ToolResultEvent } from "@oh-my-pi/pi-coding-agent";
 import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
-import { inspectSpecialistCompletion, validateLifecycleState } from "../extensions/iph";
+import { inspectSpecialistCompletion, resolveSkillDir, validateLifecycleState } from "../extensions/iph";
 
 function assert(condition: unknown, message: string): asserts condition {
 	if (!condition) throw new Error(message);
@@ -393,9 +393,130 @@ try {
 	assert(await readFile(oldLedgerPath, "utf8") === oldLedger, "repair rewrote the historical evidence ledger");
 	assert(await readFile(correctedLedgerPath, "utf8") === correctedLedger, "repair rewrote the corrected evidence ledger");
 
+	const skillDir = resolveSkillDir();
+	assert(skillDir, "authoritative skill fixture is unavailable for the real reviewer-task closure test");
+	await cp(path.join(skillDir, "tests", "fixtures", "minimal-valid-v3"), root, { recursive: true, force: true });
+	await rm(path.join(root, ".workflow_stop.lock"), { force: true });
+	await rm(path.join(root, "independent_audit.json"), { force: true });
+	await rm(path.join(root, "review_artifacts"), { recursive: true, force: true });
+	const pendingReviewState = JSON.parse(await readFile(statePath, "utf8"));
+	pendingReviewState.active_state = "INDEPENDENT_REVIEW";
+	pendingReviewState.resume_state = "INDEPENDENT_REVIEW";
+	pendingReviewState.validity_level = "V2";
+	pendingReviewState.independent_audit = {};
+	pendingReviewState.next_required_action = "Complete INDEPENDENT_REVIEW and advance exactly once to DIRECTION_LOCK.";
+	delete pendingReviewState.review_artifact_sha256;
+	delete pendingReviewState.artifacts.independent_audit;
+	await writeFile(statePath, `${JSON.stringify(pendingReviewState, null, 2)}\n`);
+	await writeFile(lifecyclePath, `${JSON.stringify({
+		schema_version: "1.0",
+		active_stage: "E3",
+		stage_pointers: {
+			E0: "workflow_state.json#output_type",
+			E1: null,
+			E2: "workflow_state.json",
+			E3: "workflow_state.json",
+			E4: "workflow_state.json#compute_stage",
+			E5: null,
+			E6: null,
+		},
+	}, null, 2)}\n`);
+
+	const parentReviewTask = {
+		type: "tool_call",
+		toolCallId: "real-review-parent-task",
+		toolName: "task",
+		input: { tasks: [{ name: "ReviewEpochOne", agent: "iph-reviewer", task: "Audit the frozen epoch-one bundle." }] },
+	} satisfies ToolCallEvent;
+	await toolCallHandlers[0]!(parentReviewTask, main);
+	const realReviewerSession = path.join(root, "real-reviewer-session.jsonl");
+	await writeFile(realReviewerSession, `${JSON.stringify({ type: "model_change", model: "deepseek/deepseek-v4-pro", resolvedModelIsFallback: false })}\n`);
+	eventBus.emit("task:subagent:lifecycle", {
+		id: "real-review-task-1",
+		agent: "iph-reviewer",
+		agentSource: "project",
+		status: "started",
+		sessionFile: realReviewerSession,
+		parentToolCallId: parentReviewTask.toolCallId,
+		index: 0,
+	});
+	const realReviewer = context(root, "real-review-thread-1", realReviewerSession);
+	const auditRelative = "review_artifacts/epoch-1-runtime.json";
+	const reviewerWriteCall = {
+		type: "tool_call",
+		toolCallId: "real-review-write",
+		toolName: "write",
+		input: { path: path.join(root, auditRelative), content: "review" },
+	} satisfies ToolCallEvent;
+	const reviewerWritePreflight = (await toolCallHandlers[0]!(reviewerWriteCall, realReviewer)) as { block?: boolean } | undefined;
+	assert(!reviewerWritePreflight?.block, "authenticated reviewer could not create its epoch artifact");
+	await mkdir(path.join(root, "review_artifacts"), { recursive: true });
+	await writeFile(path.join(root, auditRelative), `${JSON.stringify({
+		schema_version: "2.0",
+		capability_available: true,
+		author_agent_ids: ["author-m3"],
+		verdict: "PASS",
+		findings: [],
+		review_answers: {
+			data_authenticity: "compute_evidence.json identifies the synthetic source and the manuscript keeps the same bounded provenance.",
+			baseline_execution: "baseline_budget.json and test_outputs/online_chronology_pass.json identify the executed comparator contract.",
+			claim_strength: "claim_inventory.json and manuscript.md state the same bounded algorithm and theorem obligations.",
+			falsification_attempt: "novelty-audit.md records occupation, mechanical reduction, and renaming checks against the archived evidence.",
+		},
+	}, null, 2)}\n`);
+	await toolResultHandlers[0]!({
+		type: "tool_result",
+		toolCallId: reviewerWriteCall.toolCallId,
+		toolName: reviewerWriteCall.toolName,
+		input: reviewerWriteCall.input,
+		content: [{ type: "text", text: "review artifact written" }],
+		details: {},
+		isError: false,
+	} satisfies ToolResultEvent, realReviewer);
+	const sealedReview = await execute("iph_review", { verdict: "PASS", auditPath: auditRelative, strict: false }, realReviewer);
+	assert(!sealedReview.isError, `runtime reviewer could not seal PASS: ${JSON.stringify(sealedReview)}`);
+	eventBus.emit("task:subagent:lifecycle", {
+		id: "real-review-task-1",
+		agent: "iph-reviewer",
+		agentSource: "project",
+		status: "completed",
+		sessionFile: realReviewerSession,
+		parentToolCallId: parentReviewTask.toolCallId,
+		index: 0,
+	});
+	const parentReviewResult = (await toolResultHandlers[0]!({
+		type: "tool_result",
+		toolCallId: parentReviewTask.toolCallId,
+		toolName: parentReviewTask.toolName,
+		input: parentReviewTask.input,
+		content: [{ type: "text", text: "reviewer completed" }],
+		details: {},
+		isError: false,
+	} satisfies ToolResultEvent, main)) as { isError?: boolean } | undefined;
+	assert(!parentReviewResult?.isError, "parent task snapshot rolled back a reviewer-sealed state");
+	const sealedReviewState = JSON.parse(await readFile(statePath, "utf8"));
+	assert(sealedReviewState.validity_level === "V3", "reviewer PASS did not survive the parent task boundary");
+	assert(sealedReviewState.artifacts.independent_audit === auditRelative, "reviewer artifact pointer did not survive the parent task boundary");
+	const reviewAdvance = await execute("iph_advance", {
+		to: "DIRECTION_LOCK",
+		note: "accept independently sealed epoch-one review",
+		gates: [],
+		artifacts: [],
+		stateArtifacts: [],
+		nextAction: "Complete DIRECTION_LOCK and advance exactly once to COMPUTE.",
+		specialistAgentId: "real-review-task-1",
+		specialistDisposition: "ACCEPTED",
+		specialistRationale: "The sealed audit hash, four artifact-grounded answers, and strict validator all pass.",
+		strict: false,
+	}, main);
+	assert(!reviewAdvance.isError, `reviewer-sealed state could not advance: ${JSON.stringify(reviewAdvance)}`);
+
 	repairedState.active_state = "PRIOR_CLAIM_DRAIN";
 	repairedState.resume_state = "PRIOR_CLAIM_DRAIN";
 	await writeFile(statePath, `${JSON.stringify(repairedState, null, 2)}\n`);
+	const restoredLifecycle = JSON.parse(await readFile(lifecyclePath, "utf8"));
+	restoredLifecycle.active_stage = "E2";
+	await writeFile(lifecyclePath, `${JSON.stringify(restoredLifecycle, null, 2)}\n`);
 	const specialistCall = {
 		type: "tool_call",
 		toolCallId: "frontier-runtime-binding",

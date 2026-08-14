@@ -6,16 +6,16 @@
 创新批判与动态重规划权；specialist 作为独立对抗同伴；Python validator 裁决机器事实；harness
 只约束身份、生命周期、证据、状态迁移和副作用。
 
-最终本地状态：
+当前可证状态：
 
-- 权威 IPH：463/463 Python 测试通过，8 个本地提交待推送；
-- Research Harness：37/37 单元测试通过，23 节点/22 迁移拓扑完整，26 类故障注入通过，
-  真实 OMP loader、事务安装、完整 npm tarball、release dry-run 均 READY；
-- npm dry-run 包：约 70 KB，解包约 209 KB；未执行 `npm publish`；
-- 真实基线：从 `L1_FREEZE` 安全推进到 `L2_TRIAGE`，`k_set_selected=true`、
-  `active_contribution=NONE`、STOP 未激活，下一相邻目标为 `LAYER_DECISION`；
-- 模型路由实证：主流程 M3、layer-adjudicator GPT-5.6-sol、event-flow-manager DeepSeek V4 Flash，
-  三者真实 JSONL 均为 `resolvedModelIsFallback=false`。
+- 权威 IPH：470/470 `unittest` 通过；当前 Python 环境未安装 pytest，因此没有把 pytest 启动失败误报为产品失败；
+- Research Harness：46/46 Bun 测试、23 节点/22 迁移拓扑、30 类故障注入、真实 OMP loader、事务安装与 package check 均 READY；
+- fresh offline fixture：22/22 源状态通过权威 validator；五条 theory witness 命令真实执行并校验 exit/stdout/hash；
+- N0 终态：N0-1、N0-2 与 N0-3 HOLD 均落态成功，强行进入正向 claim freeze 被拒且 state 逐字节不变；
+- 晚期连续事务：Node 18–22 从 `DIRECTION_LOCK` 走到 `COMPLETE`，覆盖未授权计算拒绝、显式授权、S4、epoch+1、第二轮 runtime-bound review；
+- 真实模型历史证据：M3 已覆盖 Node 1–16，首次 Node 17 reviewer 正确发现伪 locator 与缺失 witness；此前也验证过 GPT-5.6-sol、DeepSeek V4 Pro/Flash 的角色路由；
+- 当前外部阻塞：修复后的 Node 17 真实重放在 provider 请求前被沙箱网络策略阻断，trace 为 0 token、0 tool call。因此 Node 17 修复后及 Node 18–22 不能声称“真实 M3 已复测”；
+- 未执行 Git push、`npm publish` 或远程发布。
 
 ## 方法
 
@@ -59,6 +59,12 @@
 | `-e` 调试时工具有、agent 无 | Test harness | 标准源码入口统一 `--plugin-dir`，不拆开产品包 |
 | `--no-extensions --plugin-dir` 时 agent 有、工具无 | Test harness | 同上；两条半装载轨迹作为失败注入保留 |
 | release dry-run 被 `~/.npm` root-owned cache 阻塞 | Execution environment | 使用自动清理的一次性 npm cache，不触碰用户缓存 |
+| reviewer 合法 seal 后仍在父 task 返回时消失 | 两层事务边界 | 父快照重新判定 runtime identity、同态 state、bundle/review hash 与 PASS/FAIL/STOP；只放行合法最小 delta |
+| pending review fixture 预置未来审计 | Fixture integrity | pending 状态删除未来/旧 review 文件；审计必须由当前 reviewer 新建 |
+| reviewer FAIL 被映射成 BLOCKED | Failure semantics | 实质 FAIL 保持 review state，落 INVALID+STOP+required remediation；只有能力不可用才用 BLOCKED_CAPABILITY |
+| theory witness 命令不存在但 matrix 假绿 | Verification | fixture 生成时逐项真实执行命令并比较 exit/stdout bytes/SHA-256 |
+| novelty audit 引用不存在的 Table 2 | Evidence authenticity | 改用官方 PDF `§1.1 Eq. (4)` 与 `§2.1 Theorem 1`，收窄为 matched-budget evaluation contract 边界 |
+| 受限环境无法重新下载固定 PDF | Reproducibility | 支持 `IPH_FIXTURE_PDF_CACHE` 离线输入，但仍强制同一 pinned SHA-256 |
 
 ## M3 行为评估
 
@@ -103,18 +109,26 @@ DeepSeek V4 Flash 单次投影约数秒；在 3 个工作任务运行时准确�
 
 ## 本地提交
 
-### innovation-proposition-hunting（8）
+### innovation-proposition-hunting
 
-`5b91614`、`00464b5`、`636dde2`、`c419602`、`f083995`、`ed67a77`、`6a4a9cd`、`1f7df51`。
+本轮后续关键提交包括 `a419a28`（原子 phase 语义）、`008453b`（pending review 与 sealed provenance 分离）、
+`7ec04da`（高风险 claim 词扫描）和 `966f5ae`（pending gate 也验证 sealed review failure）。
 
-### omp-research-harness（20 个实质提交 + 1 个复盘库存提交）
+### omp-research-harness
 
-从 `201303d feat: harden M3-led research workflow` 到
-`94ec99a docs: record system debug outcomes and event policy`，覆盖角色迁移、恢复、工具可见性、完整拓扑、
-生命周期、Agent-native 合同、证据语义、briefing、事件管理员、输出合同、完整包装载、模型 provenance
-和 hermetic release 检查。
+本轮后续关键提交从 `e089e1d` 的全边 agent-runnable fixture，到 `cd9de73` 的 reviewer/最小读题范围、
+`744a07b` 的确定性恢复诊断。其后 reviewer 父 task 边界、晚期连续 E2E、N0 终态 E2E 与本文档更新
+已完成工作区修改，但当前 Codex 沙箱把 `.git` 设为只读，`git commit` 返回 `index.lock: Operation not permitted`；
+这些修改不得虚报为已提交，待写权限恢复后统一做本地里程碑 commit。
 
 ## 发布结论
 
-本地发布门已满足。按用户要求，本轮只 push Git 仓库，不执行 npm publish。npm 发布应等待用户对
-源码/本地插件完成实测后，另行升级版本并走 OIDC trusted publisher。
+确定性本地门已满足，但真实模型最终门尚未满足：需要在模型网络恢复后重新跑 Node 17–22，并保存
+M3、reviewer 与 event manager 的正式 lifecycle/model trace。当前也尚有因 `.git` 只读而无法提交的工作区修改。
+因此本轮不 push、不发布 npm，也不声称“全部生产条件稳健”。恢复两项外部能力后，顺序必须是：
+
+1. fresh fixture 上真实重跑 Node 17；
+2. 同一运行器真实重跑 Node 18–22；
+3. 重跑单任务事件流与 1,101 条混合压力流，记录有/无 Flash 消融；
+4. `bun run check` + 两个新增事务 E2E；
+5. 本地 commit；用户实测通过后才考虑 push/npm。
