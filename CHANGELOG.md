@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.4 - 2026-08-14
+
 - 增加可分片的 22 节点真实模型回放器（`--from-node` / `--to-node`），并采用“日常确定性全量、
   变更节点真实重放、发布前真实全量”的测试金字塔，避免每次提交耗费数小时。
 - specialist 的实质 FAIL 与能力不可用分流：前者保留当前 gate/V-level 并提交不可变 failure、
@@ -24,8 +26,6 @@
   验收仍明确不执行 `npm publish`。
 - 明确 event-flow-manager 的容量触发与时序：低容量直接等待，高容量在事件积累后的决策检查点
   调用；初始 fan-out 同批快照只能作为早期观察，不能冒充最终 completion proof。
-
-## 0.0.4 - 2026-08-14
 
 - 将 M3 明确定义为全局综合与创新批判的责任主体，而不是弱调度器：确定性合同只限制
   副作用，不限制思考空间；specialist 是独立对抗同伴，scaffold 改动需做能力激发消融。
@@ -62,7 +62,7 @@
   缺失字段误判锁状态的问题。
 - 13 个 IPH 工具全部标记为 coordinator essential；修复扩展注册了 `iph_clear_lock`
   但 M3 实际工具面不可见的恢复死锁。
-- 权威 IPH 锁升级到 `1f7df5134683cc1e65d375da831bd64ec708a999`。
+- 权威 IPH 锁最终升级到 `966f5ae29e283e0510ff6967f2fbe755b0c06a49`。
 
 - M3 remains the default coordinator, while new `frontier` and `layer` roles route the two
   early scientific judgment gates to GPT-5.6-sol.

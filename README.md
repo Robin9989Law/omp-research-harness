@@ -177,7 +177,7 @@ completion proof。
 安装完成后提醒我退出并重新启动 OMP，让新的插件工具和 SYSTEM 生效。
 ```
 
-重启 OMP 后再创建研究工作流。安装会改变用户级 `SYSTEM.md` 和七个受管模型角色，因此不要在
+重启 OMP 后再创建研究工作流。安装会改变用户级 `SYSTEM.md` 和八个受管模型角色，因此不要在
 正在执行研究动作的会话中边安装边继续推进。
 
 ### 2. 手动安装
@@ -195,7 +195,7 @@ completion proof。
 
 ```bash
 git clone https://github.com/Robin9989Law/innovation-proposition-hunting.git /absolute/path/to/innovation-proposition-hunting
-git -C /absolute/path/to/innovation-proposition-hunting checkout f0839958f9b16338db3bc6e64fa1fcf5874d707a
+git -C /absolute/path/to/innovation-proposition-hunting checkout 966f5ae29e283e0510ff6967f2fbe755b0c06a49
 export IPH_SKILL_DIR=/absolute/path/to/innovation-proposition-hunting
 ```
 
@@ -208,7 +208,7 @@ validator。
 本项目用 [SYSTEM_TEST_MATRIX.md](SYSTEM_TEST_MATRIX.md) 管理完整验证面，并用
 [AGENT_NATIVE_ENGINEERING.md](AGENT_NATIVE_ENGINEERING.md) 固化面向 Agent 用户的接口、生命周期、
 可靠性和可观测准则：23 个正向
-状态节点、22 条迁移、专家角色路由、正负 N0 终态、26 类故障注入、STOP/BLOCKED 恢复、事务回滚、
+状态节点、22 条迁移、专家角色路由、正负 N0 终态、30 类可执行故障注入与 2 类真实失败回放、STOP/BLOCKED 恢复、事务回滚、
 防篡改、计算门、安装和打包。升级固定按静态拓扑 → 单元 → 真实 OMP 组件 → 故障注入
 → 部署 → 真实 M3 单步重放执行，首错即停，不靠重复清锁碰运气。
 
@@ -248,7 +248,7 @@ omp plugin doctor @prcbooboo/omp-research-harness
 
 #### 2.3 安装科研人格和模型角色
 
-OMP 插件安装目录中的脚本会事务化配置用户级 `SYSTEM.md` 和七个受管模型角色：
+OMP 插件安装目录中的脚本会事务化配置用户级 `SYSTEM.md` 和八个受管模型角色：
 
 ```bash
 PLUGIN_DIR="$HOME/.omp/plugins/node_modules/@prcbooboo/omp-research-harness"
@@ -512,6 +512,9 @@ review 门额外必须调用 `iph_review`。
 先跑 `check` 与 `test:nodes`，再按改动范围选择真实节点；完整 22 节点只用于发布候选、模型/OMP 路由变化
 或定期验收。完整真实回放通常需要 1–3 小时，分片证据必须保留各自的 model/session/tool/state/validator
 记录并在验收时合并。
+
+完整的设计决策、失败链、模型调优结论、证据索引和接手步骤见
+[Debug 与调优交接](docs/DEBUG_TUNING_HANDOFF_2026-08-14.md)。
 
 ## 相关项目
 
