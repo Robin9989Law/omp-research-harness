@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
-import { POSITIVE_STATE_SEQUENCE, resolveSkillDir } from "../extensions/iph";
+import { POSITIVE_STATE_SEQUENCE, resolveSkillDir, validateLifecycleState } from "../extensions/iph";
 
 type JsonObject = Record<string, any>;
 
@@ -184,6 +184,27 @@ function reached(source: string, completedState: string): boolean {
 	return POSITIVE_STATE_SEQUENCE.indexOf(source as never) >= POSITIVE_STATE_SEQUENCE.indexOf(completedState as never);
 }
 
+function lifecycleForSource(source: string): JsonObject {
+	const validityStates = new Set([
+		"CLAIM_FREEZE", "VALIDITY_AUDIT", "INDEPENDENT_REVIEW", "DIRECTION_LOCK",
+		"POSTCOMPUTE_CLAIM_FREEZE", "FINAL_VALIDITY_AUDIT", "FINAL_LOCK",
+	]);
+	const activeStage = source === "COMPUTE" ? "E4" : validityStates.has(source) ? "E3" : "E2";
+	return {
+		schema_version: "1.0",
+		active_stage: activeStage,
+		stage_pointers: {
+			E0: "workflow_state.json#output_type",
+			E1: null,
+			E2: "workflow_state.json",
+			E3: "workflow_state.json",
+			E4: "workflow_state.json#compute_stage",
+			E5: null,
+			E6: null,
+		},
+	};
+}
+
 async function stateFor(root: string, source: string, epochOneBundle: string, epochTwoBundle: string): Promise<JsonObject> {
 	const index = POSITIVE_STATE_SEQUENCE.indexOf(source as never);
 	assert(index >= 0 && source !== "COMPLETE", `unsupported source state: ${source}`);
@@ -308,6 +329,9 @@ async function main(): Promise<void> {
 		const caseRoot = path.join(outputRoot, source.toLowerCase());
 		await cp(template, caseRoot, { recursive: true });
 		await writeJson(path.join(caseRoot, "workflow_state.json"), await stateFor(caseRoot, source, epochOneBundle, epochTwoBundle));
+		const lifecycle = lifecycleForSource(source);
+		assert(validateLifecycleState(lifecycle, lifecycle.active_stage).length === 0, `invalid lifecycle fixture: ${source}`);
+		await writeJson(path.join(caseRoot, "lifecycle_state.json"), lifecycle);
 		const child = Bun.spawn([
 			"python3",
 			path.join(skillDir, "scripts", "validate_all.py"),
