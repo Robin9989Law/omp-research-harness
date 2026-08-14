@@ -9,14 +9,22 @@ import {
 	classifyComputeCommand,
 	clearRuntimeRegistryForTests,
 	createBootState,
+	createHarnessRun,
+	DEADLINE_STATE,
+	DOCTORAL_DIRECTION_LOCK_BUDGET_MS,
+	evidenceLaborForOutput,
 	EXIT_STATUS,
 	executableText,
 	eventFlowSnapshot,
 	findResearchRoot,
+	inspectHarnessRun,
 	inspectStopLock,
 	inspectSpecialistCompletion,
+	JOURNAL_DIRECTION_LOCK_BUDGET_MS,
+	JOURNAL_NODE_BUDGET_MS,
 	mutableArtifactConflicts,
 	nodeBriefing,
+	nodeBudgetTable,
 	isSanctionedReviewerTask,
 	liveReviewerIdentity,
 	recordSubagentLifecycle,
@@ -103,6 +111,9 @@ describe("M3 control-plane routing", () => {
 		expect(briefing.readBeforeAct).toContain("/authoritative/iph/evidence-pipeline.md");
 		expect(briefing.readBeforeAct).not.toContain("compute_evidence.json");
 		expect(briefing.readScope).toContain("not a ceiling");
+		expect(briefing.readScope).toContain("Do not run find/bash inventory");
+		expect(briefing.authoritySections.join(" ")).toContain("R-FRONTIER-11");
+		expect(briefing.evidenceLabor?.kSetMax).toBeUndefined();
 		expect(briefing.examples.valid).toContain("NOT_QUALIFIED");
 		expect(briefing.examples.invalid).toContain("atomic/full-text claim");
 		expect(briefing.completionProof.join(" ")).toContain("formally completed");
@@ -506,6 +517,53 @@ describe("BOOT state", () => {
 			currentYear: 2026,
 		});
 		expect(state.contribution_contract).toBe("THREE_ORGANIC_A_B_C");
+	});
+});
+
+describe("direction-lock pacing clock", () => {
+	test("journal and doctoral budgets are 45 minutes and 3 hours and cover every E2/E3 source state", () => {
+		expect(JOURNAL_DIRECTION_LOCK_BUDGET_MS).toBe(45 * 60 * 1000);
+		expect(DOCTORAL_DIRECTION_LOCK_BUDGET_MS).toBe(180 * 60 * 1000);
+		expect(DEADLINE_STATE).toBe("DIRECTION_LOCK");
+		const journalSum = Object.values(JOURNAL_NODE_BUDGET_MS).reduce((total, value) => total + value, 0);
+		expect(journalSum).toBe(JOURNAL_DIRECTION_LOCK_BUDGET_MS);
+		expect(Object.keys(JOURNAL_NODE_BUDGET_MS).sort()).toEqual(POSITIVE_STATE_SEQUENCE.slice(0, POSITIVE_STATE_SEQUENCE.indexOf("DIRECTION_LOCK")).slice().sort());
+		const doctoral = nodeBudgetTable("DOCTORAL_DISSERTATION");
+		expect(Object.values(doctoral).reduce((total, value) => total + value, 0)).toBe(DOCTORAL_DIRECTION_LOCK_BUDGET_MS);
+		expect(doctoral.INDEPENDENT_REVIEW).toBe(210_000 * 4);
+	});
+
+	test("journal labor is one M claim with K 3-8; doctoral expands A/B/C", () => {
+		expect(evidenceLaborForOutput("JOURNAL_ARTICLE")).toMatchObject({
+			contributionContract: "ONE_MAIN_M",
+			kSetMin: 3,
+			kSetMax: 8,
+			collisionRounds: 1,
+		});
+		expect(evidenceLaborForOutput("DOCTORAL_DISSERTATION")).toMatchObject({
+			contributionContract: "THREE_ORGANIC_A_B_C",
+			kSetMin: 6,
+			kSetMax: 24,
+			collisionRounds: 3,
+		});
+		expect(evidenceLaborForOutput("JOURNAL_ARTICLE").neighborPolicy).toContain("never bulk-register");
+	});
+
+	test("inspectHarnessRun reports remaining time and overrun without changing research state", () => {
+		const startedAt = "2026-08-14T00:00:00.000Z";
+		const run = createHarnessRun({ outputType: "JOURNAL_ARTICLE", startedAt });
+		const start = Date.parse(startedAt);
+		const inside = inspectHarnessRun(run, { nowMs: start + 10 * 60 * 1000, activeState: "RECENT_FRONTIER" });
+		expect(inside.ok).toBeTrue();
+		expect(inside.snapshot?.elapsedMs).toBe(10 * 60 * 1000);
+		expect(inside.snapshot?.remainingMs).toBe(JOURNAL_DIRECTION_LOCK_BUDGET_MS - 10 * 60 * 1000);
+		expect(inside.snapshot?.budgetOverrun).toBeFalse();
+		expect(inside.snapshot?.nodeBudgetMs).toBe(360_000);
+		expect(inside.snapshot?.continuousRun).toContain("DIRECTION_LOCK");
+		const overrun = inspectHarnessRun(run, { nowMs: start + JOURNAL_DIRECTION_LOCK_BUDGET_MS + 1, activeState: "L2_TRIAGE" });
+		expect(overrun.snapshot?.budgetOverrun).toBeTrue();
+		expect(overrun.snapshot?.remainingMs).toBe(-1);
+		expect(inspectHarnessRun({ schema_version: "1.0" }).ok).toBeFalse();
 	});
 });
 

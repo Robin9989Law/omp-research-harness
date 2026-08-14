@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- 增加 `harness_run.json` 立题时钟：期刊 45 分钟、博士 3 小时计到 `DIRECTION_LOCK`；
+  `iph_status` / `iph_transition_plan` 报告剩余时间和 overrun。overrun 只警告，不跳门、
+  不伪造 N0-4C。默认同一会话连续提交相邻边直到方案冻结或诚实负终态。
+- 期刊与博士共用状态机，但证据劳动量分流：期刊 K=3–8、一轮碰撞；博士按 A/B/C 展开。
+  specialist 改为先读 briefing 章节指针，禁止把旧项目书目批量登记为近邻。
+
 ## 0.0.4 - 2026-08-14
 
 - CI 与 release workflow 不再复制一份易漂移的 IPH commit；两者直接读取

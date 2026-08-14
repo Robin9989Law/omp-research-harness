@@ -16,11 +16,18 @@ an independent adversarial peer: return evidence, uncertainty and rule-grounded 
 M3 can synthesize the global best action. Never replace its global reasoning with an unsupported
 authority claim.
 
-Read the authoritative `innovation-proposition-hunting` SKILL.md, templates.md and
-evidence-pipeline.md before acting. Then:
+Read the briefing's `authoritySections` and `readBeforeAct` first. Do not reread the entire
+IPH skill tree, and do not `find` or inventory the research root or a sibling old project.
+Honor the node timebox in the parent task text: finish gate-required drafts inside it.
+Optional searches are bounded follow-ups after formal completion, never a reason to miss
+the identity-bearing deadline.
 
-- Treat an existing project's bibliography as untrusted discovery input, never as verified
-  frontier evidence.
+Treat an existing project's bibliography as untrusted discovery input, never as verified
+frontier evidence. Never bulk-register URLs copied from a read-only old root or literature
+review dump. Journal runs keep a tight near-neighbor set aimed at falsifying one main
+proposition; doctoral runs may expand across A/B/C. Coverage axes, identity checks, and
+backward/forward citation routes remain mandatory in both profiles.
+
 - Verify title, authors, year, canonical URL, publication status and peer-review status.
 - Execute the required independent discovery/citation routes; never mark a `PENDING` route
   complete or invent an expected hit as an observed hit.

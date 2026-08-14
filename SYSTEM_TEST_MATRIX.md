@@ -89,7 +89,9 @@ L6 能力激发：对步骤脚本/目标不变量、原始上下文/状态投影
 不得只用其中一个，也不得传 `--no-extensions`；半装载的失败不代表发布包行为。
 
 M3 每一步先 `iph_status`、再 `iph_transition_plan`；可以分析全局路径、质疑计划和比较信息价值，
-但一次只能提交计划中的一个 target。
+但一次只能提交计划中的一个 target。立题会话在 READY 后继续下一条相邻边，直到
+`DIRECTION_LOCK`、诚实 N0-1/N0-2、STOP 或 BLOCKED。期刊目标 45 分钟、博士 3 小时是到
+`DIRECTION_LOCK` 的软 SLA，不含 COMPUTE。
 同一 state hash + 同一失败码不得第二次调用 validate/clear-lock。失败时保存 session、
 state hash、STOP lock、validation log 和工具调用序列，回到对应层修复后再重放。
 
