@@ -129,6 +129,9 @@ STOP/BLOCKED 不会触发自动续跑；operator 修复记录中的外部原因�
 `task` 工具不需要也不接受调用者自填 model；agent 的 `@role` 在运行时解析。判断实际使用了
 哪个模型时，只认 task lifecycle 中的 `resolvedModel` / `model_change`，不能因为调用参数里没有
 model 就推断发生了回退。
+事件管理员不是每次委派都要启动：1–3 个简单任务由 M3 直接等待；大量事件累积后，在状态变更前的
+决策检查点再调用。与工作任务同批启动得到的通常只是 `CURRENT_STARTED` 早期快照，不能当最终
+completion proof。
 
 ## 快速开始
 

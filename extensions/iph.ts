@@ -247,6 +247,7 @@ const AGENT_NATIVE_EXECUTION_POLICY = [
 	"Before specialist dispatch, distinguish gate-required work from optional exploration and set a resource envelope based on information gain, cost, and deadline.",
 	"Once required artifacts exist and the authoritative validator is READY, complete the gate task formally before optional exploration; do not spend the identity-bearing completion window on unrelated searches.",
 	"If optional evidence could materially change the verdict, stop safely with the exact open question and continue in a new bounded task; preserve drafts but never reuse a timed-out or stale specialist identity.",
+	"Use event-flow-manager only at a decision checkpoint after high-volume lifecycle events have accumulated; for one to three simple tasks, wait directly, and never treat an initial-fanout snapshot as a final completion summary.",
 ];
 
 const NODE_EXAMPLES: Record<string, NodeExample> = {

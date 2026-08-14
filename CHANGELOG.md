@@ -12,6 +12,8 @@
   disposition rationale 禁止自报模型，event-flow-manager 也不得把自己的 Flash 身份外推给其他任务。
 - release/package dry-run 改用自动清理的一次性 npm cache，不再受用户 `~/.npm` 权限或历史污染影响；
   验收仍明确不执行 `npm publish`。
+- 明确 event-flow-manager 的容量触发与时序：低容量直接等待，高容量在事件积累后的决策检查点
+  调用；初始 fan-out 同批快照只能作为早期观察，不能冒充最终 completion proof。
 
 ## 0.0.4 - 2026-08-14
 
