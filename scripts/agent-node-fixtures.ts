@@ -51,6 +51,13 @@ function canonicalBundle(entries: JsonObject[]): string {
 
 async function repairEpochOneFixture(root: string): Promise<string> {
 	const officialPage = "https://proceedings.mlr.press/v235/angelopoulos24a.html";
+	const officialPdf = "https://raw.githubusercontent.com/mlresearch/v235/main/assets/angelopoulos24a/angelopoulos24a.pdf";
+	const expectedPdfSha = "125fe807fe49dbbb491c2f7d835cf61b17174cfc4fef9f2a974d0d4eb294ddf1";
+	const pdfResponse = await fetch(officialPdf);
+	assert(pdfResponse.ok, `cannot fetch official PMLR PDF: ${pdfResponse.status}`);
+	const pdfBytes = new Uint8Array(await pdfResponse.arrayBuffer());
+	assert(sha256(pdfBytes) === expectedPdfSha, "official PMLR PDF hash drifted; re-verify before updating the fixture pin");
+	await writeFile(path.join(root, "literature_archive", "W-0001.pdf"), pdfBytes);
 	await writeFile(path.join(root, "literature_archive", "W-0001.txt"), [
 		"Official PMLR record snapshot.",
 		"",
@@ -65,7 +72,7 @@ async function repairEpochOneFixture(root: string): Promise<string> {
 		`Source: ${officialPage}`,
 		"",
 	].join("\n"));
-	const archivedSha = await fileSha(root, "literature_archive/W-0001.txt");
+	const archivedSha = await fileSha(root, "literature_archive/W-0001.pdf");
 	await writeJson(path.join(root, "near_neighbor_registry.json"), {
 		schema_version: "2.0",
 		current_year: 2026,
@@ -104,9 +111,9 @@ async function repairEpochOneFixture(root: string): Promise<string> {
 			peer_review_status: "PEER_REVIEWED_PUBLISHED",
 			peer_review_verification_url: officialPage,
 			download: {
-				status: "OFFICIAL_HTML_ARCHIVED",
-				source_url: officialPage,
-				local_path: "literature_archive/W-0001.txt",
+				status: "FULLTEXT_ARCHIVED",
+				source_url: officialPdf,
+				local_path: "literature_archive/W-0001.pdf",
 				sha256: archivedSha,
 				downloaded_at: "2026-08-14T00:00:00Z",
 				verified_against_metadata: true,
@@ -121,17 +128,17 @@ async function repairEpochOneFixture(root: string): Promise<string> {
 		records: [{
 			claim_id: "LC-0001",
 			source_registry_id: "W-0001",
-			source_artifact_id: "ART-W-0001-OFFICIAL-PAGE",
-			source_artifact_kind: "FULL_ARTICLE_HTML",
+			source_artifact_id: "ART-W-0001-PDF-SEC1-1",
+			source_artifact_kind: "FULL_ARTICLE_PDF",
 			claim_type: "ENABLES",
-			normalized_statement: "The 2024 method uses decaying step sizes for online conformal prediction and reports retrospective coverage for arbitrary sequences.",
-			source_excerpt: "",
-			locator: { section: "Abstract" },
+			normalized_statement: "The registered method updates the online conformal threshold after observing each label, using a time-varying step size.",
+			source_excerpt: "where the threshold qt is updated with the rule",
+			locator: { section: "1.1 Method and Setup", page: "2", equation: "(4)" },
 			conditions: ["online conformal prediction", "arbitrary sequences"],
 			scope: "reported properties of the registered 2024 method",
 			evidence_level: "E2",
 			proof_locator: "",
-			verification_status: "VERIFIED_OFFICIAL_HTML",
+			verification_status: "VERIFIED_FULLTEXT",
 			importance: "CRITICAL",
 			discovered_round: 1,
 			use_status: "USED",
@@ -166,13 +173,13 @@ async function repairEpochOneFixture(root: string): Promise<string> {
 		current_collision_round: 1,
 		output_claims: [{
 			output_claim_id: "OC-0001",
-			statement: "The registered 2024 neighbor uses decaying step sizes for online conformal prediction and reports retrospective coverage for arbitrary sequences.",
+			statement: "The registered 2024 neighbor updates its online conformal threshold after each observed label using a time-varying step size.",
 			output_location: "manuscript.md:9",
 			claim_kind: "FACT",
 			supporting_claim_ids: ["LC-0001"],
 			counter_claim_ids: [],
 			inference_type: "DIRECT",
-			reasoning: "The official registered article record directly states the method and reported coverage scope.",
+			reasoning: "The archived official PDF states the threshold update in Section 1.1, equation (4).",
 			caveats: "This is a literature fact, not proof of the candidate method's novelty or validity.",
 			trace_status: "VERIFIED",
 		}],
@@ -295,6 +302,7 @@ async function applyLayeredEvidence(root: string, source: string): Promise<void>
 			block_reason: "L1/L2 metadata-and-abstract stage; K fulltext retrieval has not begun.",
 		};
 		await writeJson(path.join(root, "near_neighbor_registry.json"), registry);
+		await rm(path.join(root, "literature_archive", "W-0001.pdf"), { force: true });
 	}
 	if (sourceIndex < claimIndex) {
 		const registry = await readJson(path.join(root, "near_neighbor_registry.json"));
