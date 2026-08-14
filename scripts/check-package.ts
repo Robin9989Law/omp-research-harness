@@ -31,6 +31,10 @@ const required = [
 	"schemas/lifecycle_state.schema.json",
 	"config/model-roles.yml",
 	"config/iph-lock.json",
+	"sif/schema.json",
+	"sif/impact.yml",
+	"sif/cli.ts",
+	"sif/README.md",
 ];
 
 for (const relative of required) {
@@ -69,6 +73,9 @@ if (expectedRepository) {
 }
 for (const runtimeFile of ["scripts/install-user-config.sh", "scripts/manage-user-config.ts"]) {
 	if (!pkg.files?.includes(runtimeFile)) throw new Error(`published package omits runtime file: ${runtimeFile}`);
+}
+if (pkg.files?.includes("sif") || pkg.files?.some((item: string) => String(item).startsWith("sif/"))) {
+	throw new Error("published plugin must not ship the SIF evaluation harness");
 }
 
 const skillDir = resolveSkillDir();

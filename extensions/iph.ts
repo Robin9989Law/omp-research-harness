@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { lstat, mkdir, open, readFile, readdir, readlink, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import * as path from "node:path";
@@ -329,6 +329,7 @@ export const POSITIVE_STATE_SEQUENCE = [
 const WORKFLOW_FILE = "workflow_state.json";
 const LIFECYCLE_FILE = "lifecycle_state.json";
 export const HARNESS_RUN_FILE = "harness_run.json";
+export const SPECIALIST_RUNTIME_FILE = ".iph_specialist_runtime.json";
 const REVIEW_DIR = "review_artifacts";
 const STOP_LOCK_FILE = ".workflow_stop.lock";
 const VALIDATION_LOG_FILE = "validation.log";
@@ -387,9 +388,11 @@ const AGENT_NATIVE_EXECUTION_POLICY = [
 	"Treat runtime lifecycle metadata (resolvedModel/model_change) as the only authority for a subagent's actual model; absence of a model field in the task call is normal role routing, not evidence of fallback.",
 	"Before specialist dispatch, distinguish gate-required work from optional exploration and set a resource envelope based on information gain, cost, and deadline.",
 	"Once required artifacts exist and the authoritative validator is READY, complete the gate task formally before optional exploration; do not spend the identity-bearing completion window on unrelated searches.",
-	"If optional evidence could materially change the verdict, stop safely with the exact open question and continue in a new bounded task; preserve drafts but never reuse a timed-out or stale specialist identity.",
+	"If optional evidence could materially change the verdict, stop safely with the exact open question and continue in a new bounded task; preserve drafts but never reuse a timed-out, unbound, or stale specialist identity.",
+	"If iph_event_snapshot reports DISPATCH_REQUIRED, UNBOUND, STALE, or binding_mismatch, dispatch a NEW specialist for the current target. Never reuse that agent ID and never inspect .harness-sessions with bash, grep, or read.",
 	"Use event-flow-manager only at a decision checkpoint after high-volume lifecycle events have accumulated; for one to three simple tasks, wait directly, and never treat an initial-fanout snapshot as a final completion summary.",
 	"Close specialist failure in machine state: a substantive FAIL is sealed and remains at the same gate with INVALID+STOP and an exact remediation; a machine-readable BLOCKED_CAPABILITY result makes the coordinator commit BLOCKED+STOP. Narration alone is never closure.",
+	"A missing public PDF or full-article HTML is a repairable archive defect, not BLOCKED_CAPABILITY. Publisher landing pages, ACL Anthology chrome, arXiv /abs, and ICLR hash pages are not full text; replace them, then dispatch a NEW specialist.",
 	"Keep committing adjacent edges in this same session until DIRECTION_LOCK, an honest N0-1/N0-2 terminal, STOP, or BLOCKED. Do not yield after a successful commit merely because one node finished.",
 	"The journal 45-minute / doctoral 3-hour clock is a soft SLA to DIRECTION_LOCK. Overrun is a warning; never skip axes, bulk-register an old bibliography, or fabricate N0-4C to beat the clock.",
 ];
@@ -597,8 +600,8 @@ function authoritySectionsForNode(activeState: string): string[] {
 
 const NODE_EXAMPLES: Record<string, NodeExample> = {
 	PRIOR_CLAIM_DRAIN: {
-		valid: "Audit every falsification candidate against identified near-24-month works and preserve unresolved routes as bounded gaps.",
-		invalid: "Treat unavailable search routes as negative evidence or qualify works whose identity/publication status is unverified.",
+		valid: "Write identity/coverage drafts with literature_claim_registry.json records=[], using metadata and abstracts only.",
+		invalid: "Extract atomic claims at L1, freeze mutable registries as immutable hashes, or reuse an unbound specialist identity.",
 	},
 	RECENT_FRONTIER: {
 		valid: "Register identity, publication and peer-review evidence by semantic role; one authoritative publisher page may serve several roles.",
@@ -615,6 +618,10 @@ const NODE_EXAMPLES: Record<string, NodeExample> = {
 	L2_TRIAGE: {
 		valid: "The contribution architecture reconciles the frozen layers with output type and names remaining obligations and stop conditions.",
 		invalid: "Choose a contribution contract to evade evidence obligations or imply compute authorization.",
+	},
+	LAYER_DECISION: {
+		valid: "Archive each K-set work as a PDF or full-article HTML with a matching SHA-256. Publisher landing pages, ACL Anthology chrome, arXiv /abs, and ICLR hash pages are not full text.",
+		invalid: "Mark OFFICIAL_HTML_ARCHIVED from an abstract/metadata page, or send atomic-claim extraction against landing-page HTML.",
 	},
 	K_FULLTEXT: {
 		valid: "Every atomic claim has a stable ID, archived source hash and exact locator, with quotation and interpretation kept distinct.",
@@ -1037,6 +1044,7 @@ export function recordSubagentLifecycle(payload: unknown, binding?: SpecialistDi
 			eventCount: existing.eventCount + 1,
 			conflicts: [...new Set([...existing.conflicts, `identity_collision:${candidate.id}/${candidate.agent}`])],
 		});
+		if (existing.researchRoot) persistSpecialistRuntime(existing.researchRoot);
 		return;
 	}
 	const terminal = new Set<SubagentLifecycleRecord["status"]>(["completed", "failed", "aborted"]);
@@ -1051,26 +1059,91 @@ export function recordSubagentLifecycle(payload: unknown, binding?: SpecialistDi
 			eventCount: existing.eventCount + 1,
 			conflicts: conflict ? [...new Set([...existing.conflicts, conflict])] : existing.conflicts,
 		});
+		if (existing.researchRoot) persistSpecialistRuntime(existing.researchRoot);
 		return;
 	}
 	const bound = binding?.agents.has(candidate.agent) ? binding : undefined;
+	const researchRoot = bound?.researchRoot ?? existing?.researchRoot ?? findResearchRoot(path.dirname(sessionFile));
 	runtimeRegistry().set(sessionFile, {
 		id: candidate.id,
 		agent: candidate.agent,
 		status: candidate.status as SubagentLifecycleRecord["status"],
 		sessionFile,
 		parentToolCallId: text(candidate.parentToolCallId) || existing?.parentToolCallId,
-		researchRoot: bound?.researchRoot ?? existing?.researchRoot,
+		researchRoot,
 		target: bound?.target ?? existing?.target,
 		firstSeenAt: existing?.firstSeenAt ?? now,
 		updatedAt: now,
 		eventCount: (existing?.eventCount ?? 0) + 1,
 		conflicts: existing?.conflicts ?? [],
 	});
+	if (researchRoot) persistSpecialistRuntime(researchRoot);
 }
 
 export function clearRuntimeRegistryForTests(): void {
 	runtimeRegistry().clear();
+}
+
+function persistSpecialistRuntime(root: string): void {
+	if (!existsSync(root)) return;
+	const records = [...runtimeRegistry().values()].filter(record => record.researchRoot === root);
+	const file = path.join(root, SPECIALIST_RUNTIME_FILE);
+	const temporary = `${file}.${process.pid}.tmp`;
+	try {
+		writeFileSync(temporary, `${JSON.stringify({ schema_version: "1.0", records }, null, 2)}\n`);
+		renameSync(temporary, file);
+	} catch {
+		try {
+			if (existsSync(temporary)) unlinkSync(temporary);
+		} catch {
+			// Persistence is a continue-session aid; never fail the lifecycle event.
+		}
+	}
+}
+
+function hydrateSpecialistRuntime(researchRoot: string): void {
+	const file = path.join(researchRoot, SPECIALIST_RUNTIME_FILE);
+	if (!existsSync(file)) return;
+	let payload: unknown;
+	try {
+		payload = JSON.parse(readFileSync(file, "utf8")) as unknown;
+	} catch {
+		return;
+	}
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
+	const records = (payload as { records?: unknown }).records;
+	if (!Array.isArray(records)) return;
+	for (const item of records) {
+		if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+		const candidate = item as Partial<SubagentLifecycleRecord>;
+		if (typeof candidate.sessionFile !== "string" || typeof candidate.id !== "string" || typeof candidate.agent !== "string") continue;
+		if (!["started", "completed", "failed", "aborted"].includes(text(candidate.status))) continue;
+		const sessionFile = normalizedSessionFile(candidate.sessionFile);
+		const existing = runtimeRegistry().get(sessionFile);
+		if (!existing) {
+			runtimeRegistry().set(sessionFile, {
+				id: candidate.id,
+				agent: candidate.agent,
+				status: candidate.status as SubagentLifecycleRecord["status"],
+				sessionFile,
+				parentToolCallId: candidate.parentToolCallId,
+				researchRoot: candidate.researchRoot ?? researchRoot,
+				target: candidate.target,
+				firstSeenAt: candidate.firstSeenAt ?? new Date().toISOString(),
+				updatedAt: candidate.updatedAt ?? new Date().toISOString(),
+				eventCount: typeof candidate.eventCount === "number" ? candidate.eventCount : 1,
+				conflicts: Array.isArray(candidate.conflicts) ? candidate.conflicts.filter((value): value is string => typeof value === "string") : [],
+			});
+			continue;
+		}
+		if (!existing.target && candidate.target) {
+			runtimeRegistry().set(sessionFile, {
+				...existing,
+				researchRoot: existing.researchRoot ?? candidate.researchRoot ?? researchRoot,
+				target: candidate.target,
+			});
+		}
+	}
 }
 
 export function runtimeReviewerIdentity(
@@ -1338,6 +1411,27 @@ export async function specialistRuntimeModelEvidence(
 	}
 }
 
+export function dropFrozenPointerArtifacts(
+	artifacts: string[],
+	assignments: string[],
+): { artifacts: string[]; dropped: string[] } {
+	const pointerPaths = new Set<string>();
+	for (const assignment of assignments) {
+		const separator = assignment.indexOf("=");
+		if (separator < 1) continue;
+		const key = assignment.slice(0, separator).trim();
+		const relative = assignment.slice(separator + 1).trim();
+		if (MUTABLE_ARTIFACT_KEYS.has(key) && canonicalRelativePath(relative)) pointerPaths.add(relative);
+	}
+	const dropped: string[] = [];
+	const kept: string[] = [];
+	for (const artifact of artifacts) {
+		if (pointerPaths.has(artifact)) dropped.push(artifact);
+		else kept.push(artifact);
+	}
+	return { artifacts: kept, dropped };
+}
+
 export function mutableArtifactConflicts(artifacts: string[], assignments: string[]): string[] {
 	const immutable = new Set(artifacts.filter(canonicalRelativePath));
 	const conflicts = new Set<string>();
@@ -1353,12 +1447,89 @@ export function mutableArtifactConflicts(artifacts: string[], assignments: strin
 	return [...conflicts].sort();
 }
 
+export function sessionForensicsIssue(toolName: string, input: Record<string, unknown>, command?: string): string | undefined {
+	const reason = "Session transcripts are not a recovery surface. Call iph_event_snapshot. Unbound or stale specialists cannot be reused; dispatch a NEW specialist for the current target.";
+	if (toolName === "bash" && command && /\.harness-sessions(?:\/|"|'|\s|$)/.test(command)) return reason;
+	for (const target of inputPaths(input)) {
+		if (target.includes(".harness-sessions")) return reason;
+	}
+	return undefined;
+}
+
+export async function l1ClaimRegistryIssue(root: string, target: string): Promise<string | undefined> {
+	if (target !== "RECENT_FRONTIER" && target !== "LITERATURE_REGISTER") return undefined;
+	const payload = await readJsonObject<Record<string, unknown>>(path.join(root, "literature_claim_registry.json"));
+	if (!payload) return undefined;
+	const records = payload.records ?? payload.claims;
+	if (!Array.isArray(records) || records.length === 0) return undefined;
+	return `L1 ${target} forbids atomic claim records (budget=0); empty literature_claim_registry.json records and dispatch a NEW frontier-auditor. Found ${records.length} record(s).`;
+}
+
+const LANDING_PAGE_MARKERS = [
+	"acl anthology",
+	"arxiv.org/abs/",
+	"openreview.net/forum",
+	"abstract-conference",
+];
+const ARTICLE_BODY_MARKERS = [
+	"<h2>introduction",
+	"<h1>introduction",
+	"id=\"s1\"",
+	"class=\"ltx_section\"",
+	"ltx_bibliography",
+];
+
+export function archivedSourceLooksLikeArticle(bytes: Uint8Array, fileName: string): boolean {
+	if (bytes.length >= 5 && Buffer.from(bytes.subarray(0, 5)).toString("ascii") === "%PDF-") return true;
+	if (fileName.toLowerCase().endsWith(".pdf")) return false;
+	const text = Buffer.from(bytes.subarray(0, Math.min(bytes.length, 200_000))).toString("utf8").toLowerCase();
+	if (ARTICLE_BODY_MARKERS.some(marker => text.includes(marker))) return true;
+	if (LANDING_PAGE_MARKERS.some(marker => text.includes(marker))) return false;
+	return bytes.length >= 80_000;
+}
+
+export async function kFulltextArchiveIssue(root: string, target: string): Promise<string | undefined> {
+	if (target !== "K_FULLTEXT" && target !== "K_CLAIM_REGISTER") return undefined;
+	const scope = await readJsonObject<Record<string, unknown>>(path.join(root, "current_evidence_scope.json"));
+	const ids = scope?.fulltext_registry_ids;
+	if (!Array.isArray(ids) || ids.length === 0) {
+		return "K-set full text requires a non-empty current_evidence_scope.json fulltext_registry_ids list and matching literature_archive files.";
+	}
+	const archiveDir = path.join(root, "literature_archive");
+	const missing: string[] = [];
+	const landing: string[] = [];
+	for (const id of ids) {
+		if (typeof id !== "string" || !id.trim()) continue;
+		let found: { name: string; bytes: Uint8Array } | undefined;
+		for (const name of [`${id}.pdf`, `${id}.html`, `${id}.htm`]) {
+			try {
+				found = { name, bytes: await readFile(path.join(archiveDir, name)) };
+				break;
+			} catch {
+				// try the next extension
+			}
+		}
+		if (!found) {
+			missing.push(id);
+			continue;
+		}
+		if (!archivedSourceLooksLikeArticle(found.bytes, found.name)) landing.push(`${id}:${found.name}`);
+	}
+	if (missing.length === 0 && landing.length === 0) return undefined;
+	const parts = [
+		missing.length > 0 ? `missing: ${missing.join(", ")}` : "",
+		landing.length > 0 ? `landing/abstract pages are not full text: ${landing.join(", ")}` : "",
+	].filter(Boolean);
+	return `K-set full text is not archived as PDF or full-article HTML (${parts.join("; ")}). Replace literature_archive files, update hashes/download status, then dispatch a NEW atomic-claim-extractor. Do not commit BLOCKED_CAPABILITY; a public PDF is a repair.`;
+}
+
 function matchingSpecialistRecord(
 	agentId: string,
 	expectedAgent: string,
 	researchRoot: string,
 	target: string,
 ): SubagentLifecycleRecord | undefined {
+	hydrateSpecialistRuntime(researchRoot);
 	return [...runtimeRegistry().values()].find(record =>
 		record.id === agentId &&
 		record.agent === expectedAgent &&
@@ -1373,6 +1544,7 @@ export function inspectSpecialistCompletion(
 	researchRoot: string,
 	target: string,
 ): { completed: boolean; status: string; diagnosis: string } {
+	hydrateSpecialistRuntime(researchRoot);
 	const exact = matchingSpecialistRecord(agentId, expectedAgent, researchRoot, target);
 	if (exact) {
 		return {
@@ -1386,13 +1558,18 @@ export function inspectSpecialistCompletion(
 		return {
 			completed: false,
 			status: "binding_mismatch",
-			diagnosis: `${agentId} was observed as ${sameId.agent}/${sameId.status} but is not bound to ${target} at ${researchRoot}`,
+			diagnosis: `${agentId} was observed as ${sameId.agent}/${sameId.status} but is not bound to ${target} at ${researchRoot}. Dispatch a NEW ${expectedAgent} for ${target}; never reuse this agent ID and never inspect .harness-sessions.`,
 		};
 	}
-	return { completed: false, status: "not_observed", diagnosis: `${agentId} has no authenticated task lifecycle record` };
+	return {
+		completed: false,
+		status: "not_observed",
+		diagnosis: `${agentId} has no authenticated task lifecycle record. Dispatch a NEW ${expectedAgent} for ${target}; do not grep session files.`,
+	};
 }
 
 export function eventFlowSnapshot(researchRoot: string, expectedTarget?: string, expectedAgent?: string) {
+	hydrateSpecialistRuntime(researchRoot);
 	const records = [...runtimeRegistry().values()]
 		.filter(record => record.researchRoot === researchRoot && record.agent !== "event-flow-manager")
 		.sort((left, right) => left.firstSeenAt.localeCompare(right.firstSeenAt) || left.id.localeCompare(right.id));
@@ -1403,6 +1580,8 @@ export function eventFlowSnapshot(researchRoot: string, expectedTarget?: string,
 		target: record.target ?? null,
 		classification: record.conflicts.length > 0
 			? "CONFLICT"
+			: !record.target
+			? "UNBOUND"
 			: record.target !== expectedTarget
 			? "STALE"
 			: record.agent !== expectedAgent
@@ -1418,23 +1597,42 @@ export function eventFlowSnapshot(researchRoot: string, expectedTarget?: string,
 	const started = current.filter(task => task.classification === "CURRENT_STARTED");
 	const completed = current.filter(task => task.classification === "CURRENT_TERMINAL" && task.status === "completed");
 	const failed = current.filter(task => task.classification === "CURRENT_TERMINAL" && task.status !== "completed");
+	const unbound = tasks.filter(task => task.classification === "UNBOUND");
+	const stale = tasks.filter(task => task.classification === "STALE");
 	let recommendation = "DISPATCH_REQUIRED";
 	if (conflicts.length > 0 || current.length > 1) recommendation = "RECONCILE_CONFLICT";
 	else if (started.length === 1) recommendation = "WAIT_FOR_FORMAL_COMPLETION";
 	else if (failed.length === 1) recommendation = "HANDLE_TERMINAL_FAILURE";
 	else if (completed.length === 1) recommendation = "VERIFY_ARTIFACTS_AND_RECORD_DISPOSITION";
+	const reuseForbidden = [...unbound, ...stale]
+		.filter(task => !expectedAgent || task.agent === expectedAgent)
+		.map(task => task.id);
+	const recovery = !expectedAgent
+		? "No required specialist at this gate."
+		: recommendation === "WAIT_FOR_FORMAL_COMPLETION"
+			? `Wait for the started ${expectedAgent} to complete and pass that exact agent ID.`
+			: recommendation === "VERIFY_ARTIFACTS_AND_RECORD_DISPOSITION"
+				? `Record ACCEPTED or OVERRIDDEN for the completed ${expectedAgent}, then iph_advance.`
+			: recommendation === "HANDLE_TERMINAL_FAILURE"
+				? `Handle the failed ${expectedAgent}; do not reuse its agent ID.`
+			: recommendation === "RECONCILE_CONFLICT"
+				? "Reconcile conflicting specialist identities before advancing."
+				: `Dispatch a NEW ${expectedAgent} for ${expectedTarget}. Do not reuse unbound or stale agent IDs${reuseForbidden.length > 0 ? ` (${reuseForbidden.join(", ")})` : ""}. Call iph_event_snapshot if identity is unclear. Never inspect .harness-sessions.`;
 	return {
 		researchRoot,
 		expectedTarget: expectedTarget ?? null,
 		expectedAgent: expectedAgent ?? null,
 		recommendation,
+		recovery,
+		reuseForbidden,
 		stateChangeJustified: completed.length === 1 && current.length === 1,
 		counts: {
 			total: tasks.length,
 			currentStarted: started.length,
 			currentCompleted: completed.length,
 			currentFailed: failed.length,
-			stale: tasks.filter(task => task.classification === "STALE").length,
+			unbound: unbound.length,
+			stale: stale.length,
 			optional: tasks.filter(task => task.classification === "OPTIONAL").length,
 			conflicts: conflicts.length,
 		},
@@ -2125,6 +2323,10 @@ function isHarnessRunTarget(relative: string): boolean {
 	return relative === HARNESS_RUN_FILE || relative.endsWith(`/${HARNESS_RUN_FILE}`);
 }
 
+function isSpecialistRuntimeTarget(relative: string): boolean {
+	return relative === SPECIALIST_RUNTIME_FILE || relative.endsWith(`/${SPECIALIST_RUNTIME_FILE}`);
+}
+
 function isStateTarget(relative: string): boolean {
 	return relative === WORKFLOW_FILE || relative.endsWith(`/${WORKFLOW_FILE}`);
 }
@@ -2711,6 +2913,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 						disposition: "Record ACCEPTED or OVERRIDDEN plus the evidence, rule, or validator rationale. Completion proves identity, not correctness.",
 						modelEvidence: "Report the actual subagent model only from runtime resolvedModel/model_change metadata; if unavailable report UNKNOWN, never infer fallback from the task input schema.",
 					} : null,
+					eventFlow: eventFlowSnapshot(root, plan.target, plan.specialist),
 					rules: [
 						...AGENT_NATIVE_EXECUTION_POLICY,
 						"Draft and validate before iph_advance.",
@@ -2809,16 +3012,25 @@ export default function iphExtension(pi: ExtensionAPI) {
 			if (targetIssue) {
 				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${targetIssue}`));
 			}
-			const mutableConflicts = mutableArtifactConflicts(input.artifacts, input.stateArtifacts ?? []);
+			const sanitizedArtifacts = dropFrozenPointerArtifacts(input.artifacts, input.stateArtifacts ?? []);
+			const mutableConflicts = mutableArtifactConflicts(sanitizedArtifacts.artifacts, input.stateArtifacts ?? []);
 			if (mutableConflicts.length > 0) {
 				return toolResult(blockedResult(
 					root,
 					`mutable state pointer artifacts must not be frozen in decision_log: ${mutableConflicts.join(", ")}`,
 				));
 			}
-			const artifactScopeIssue = transitionArtifactScopeIssue(currentState, input.to, input.artifacts);
+			const artifactScopeIssue = transitionArtifactScopeIssue(currentState, input.to, sanitizedArtifacts.artifacts);
 			if (artifactScopeIssue) {
 				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${artifactScopeIssue}`));
+			}
+			const layerIssue = await l1ClaimRegistryIssue(root, input.to);
+			if (layerIssue) {
+				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${layerIssue}`));
+			}
+			const archiveIssue = await kFulltextArchiveIssue(root, input.to);
+			if (archiveIssue) {
+				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${archiveIssue}`));
 			}
 			const gateIssue = transitionGateIssue(input.to, input.gates, input.noveltyLevel);
 			if (gateIssue) {
@@ -2875,7 +3087,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 			const args = ["--to", input.to, "--note", transitionNote, "--next-action", input.nextAction];
 			if (input.strict) args.push("--strict-new-checks");
 			for (const gate of input.gates) args.push("--set-gate", gate);
-			for (const artifact of input.artifacts) args.push("--artifact", artifact);
+			for (const artifact of sanitizedArtifacts.artifacts) args.push("--artifact", artifact);
 			for (const artifact of input.stateArtifacts ?? []) args.push("--set-artifact", artifact);
 			if (input.contribution) args.push("--contribution", input.contribution);
 			if (input.noveltyLevel) args.push("--novelty-level", input.noveltyLevel);
@@ -3094,6 +3306,12 @@ export default function iphExtension(pi: ExtensionAPI) {
 		if (!root) return;
 		const state = await readWorkflow(root);
 		if (!state) return;
+		const forensics = sessionForensicsIssue(
+			event.toolName,
+			event.input as Record<string, unknown>,
+			event.toolName === "bash" ? executableText(event.toolName, event.input) : undefined,
+		);
+		if (forensics) return { block: true, reason: forensics };
 		const bridgedIphTool = xdIphToolName(event.toolName, event.input as unknown as Record<string, unknown>);
 		const reviewerIdentity = reviewerIdentityForContext(ctx);
 		const sanitizedSpecialistTask = event.toolName === "task"
@@ -3125,6 +3343,9 @@ export default function iphExtension(pi: ExtensionAPI) {
 				}
 				if (isHarnessRunTarget(relative)) {
 					return { block: true, reason: "Direct harness_run.json mutation is forbidden; the pacing clock is owned by iph_bootstrap." };
+				}
+				if (isSpecialistRuntimeTarget(relative)) {
+					return { block: true, reason: "Direct specialist runtime mutation is forbidden; identity is owned by authenticated task lifecycle." };
 				}
 				if (isControlJournalTarget(relative)) {
 					return { block: true, reason: `Direct ${relative} mutation is forbidden; validation journals and STOP locks are owned by iph_* tools.` };
@@ -3160,6 +3381,9 @@ export default function iphExtension(pi: ExtensionAPI) {
 			}
 			if (bashMutatesNamedFile(command, HARNESS_RUN_FILE)) {
 				return { block: true, reason: "Shell mutation of harness_run.json is forbidden; the pacing clock is owned by iph_bootstrap." };
+			}
+			if (bashMutatesNamedFile(command, SPECIALIST_RUNTIME_FILE)) {
+				return { block: true, reason: "Shell mutation of specialist runtime is forbidden; identity is owned by authenticated task lifecycle." };
 			}
 			if (bashMutatesNamedFile(command, VALIDATION_LOG_FILE) || bashMutatesNamedFile(command, STOP_LOCK_FILE)) {
 				return { block: true, reason: "Shell mutation of validation.log or .workflow_stop.lock is forbidden; use the corresponding iph_* closure or recovery tool." };

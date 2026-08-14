@@ -83,7 +83,9 @@ epoch 文件，事后改动即 REVIEW_ARTIFACT_TAMPERED。
 specialist 委派 MUST 使用最小 `task` 调用：只传 `context` 与 `tasks[]` 中的 `name`、
 `agent`、`task`。MUST NOT 为上述 specialist 自造或传入 `outputSchema` / `schemaMode`；
 它们直接写 transition contract 指定的工件。等待任务完成后，把返回的精确 agent ID
-作为 `specialistAgentId` 传给 `iph_advance`。
+作为 `specialistAgentId` 传给 `iph_advance`。未绑定、过期或续跑后丢失 target 的
+完成身份 MUST NOT 复用；必须新派一个同角色 specialist。MUST NOT 用 bash/grep/read
+翻 `.harness-sessions` 或 session jsonl 来“找回”身份；只读 `iph_event_snapshot`。
 
 `iph_status`、`iph_transition_plan`、`iph_validate`、`iph_advance` 等均为直接注册的工具。
 MUST 按原名直接调用；MUST NOT 编造 `ipc_call`、MCP wrapper 或 shell wrapper。工具清单
@@ -161,6 +163,10 @@ E6 收尾/投稿：成稿核对 + 投稿。
 - decision_log 已登记 SHA-256 的工件不可原地修改；需要实质变化时创建版本化替代物并通过新状态/epoch 登记。
 - `iph_validate` 非零 → STOP：保留产物、记录唯一恢复动作，不得宣布 READY/LOCKED/CLOSED。
 - 证据深度按层供给：L1 零全文、L2 摘要级、L3 只对 K 集合全重，超层即 INVALID。
+  进入 `RECENT_FRONTIER` / `LITERATURE_REGISTER` 时 `literature_claim_registry.json`
+  的 `records` 必须为空。K 集合归档必须是 PDF 或全文 HTML，出版商落地页 / ACL
+  Anthology 壳页 / arXiv `/abs` 不算全文，也不得因此提交 BLOCKED_CAPABILITY。
+- 可变路径指针走 `stateArtifacts`，不得放进 `artifacts` 冻结哈希。
 - 状态推进只走 `iph_advance`，禁止手改 `workflow_state.json`。
 - specialist 只读 briefing 给出的最小文件与权威章节；禁止全仓库 find，禁止把只读旧根中的 URL 批量登记为近邻。
 

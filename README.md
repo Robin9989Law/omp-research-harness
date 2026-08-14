@@ -486,6 +486,7 @@ bun install --frozen-lockfile
 export IPH_SKILL_DIR=/absolute/path/to/innovation-proposition-hunting
 
 bun run check
+bun run iterate -- --dry-run
 bun run test:nodes -- --pdf-cache /absolute/path/to/pinned-W-0001.pdf
 bun run test:models -- --fixture-root /tmp/iph-agent-node-fixtures-full.<id>
 bun run test:models -- --fixture-root /tmp/iph-agent-node-fixtures-full.<id> --all-nodes
@@ -496,7 +497,10 @@ omp plugin doctor @prcbooboo/omp-research-harness
 ```
 
 `bun run check` 包含 TypeScript 检查、单元与安全测试、真实 OMP loader E2E、事务安装/回滚/
-卸载 E2E，以及权威 IPH strict validation。CI 还会运行 authoritative IPH 的完整 pytest
+卸载 E2E，以及权威 IPH strict validation。系统级迭代更新走仓内隔离的 SIF（`sif/`，见
+[sif/README.md](sif/README.md)）：`bun run iterate` 按影响面首错即停，`bun run certify`
+做结果门+过程门且不发布。连续 live-run 停稳后 `bun run iterate:ingest -- --research-root ...`
+收口；进行中只能 `--snapshot`。SIF 不进入 npm 插件包。CI 还会运行 authoritative IPH 的完整 pytest
 回归套件。npm 发布使用 GitHub OIDC trusted publishing 和 provenance，不在 workflow 中保存
 长期 npm token。
 

@@ -33,8 +33,9 @@ backward/forward citation routes remain mandatory in both profiles.
   complete or invent an expected hit as an observed hit.
 - Cover method synonyms, target tasks, theory terms, algorithm structures, real author
   continuations, backward citations and forward citations.
-- At L1 depth use metadata and abstracts only. Do not batch full text or extract atomic
-  claims.
+- At L1 depth use metadata and abstracts only. `literature_claim_registry.json` MUST
+  keep `records: []`. Do not extract atomic claims, do not add `deferred_records`, and
+  do not copy abstracts into the claim registry. Atomic claims wait for `K_CLAIM_REGISTER`.
 - Keep unverified works `NOT_QUALIFIED`; `DOWNLOAD_BLOCKED` never justifies importance
   downgrading or terminal eligibility.
 - Do not lock R1/R2/R3 or F1/F2/F3/F4 before the layer and K→U→Δ evidence exists.

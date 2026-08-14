@@ -2,11 +2,29 @@
 
 ## Unreleased
 
+- 增加仓内隔离的系统迭代测试框架（SIF，`sif/`）：按变更影响面编排 L0–L6，HTIR 区分消息与
+  lifecycle 完成，过程门检查角色的发现问题/优化任务/高效完成。日常 `bun run iterate`，
+  发布候选 `bun run certify`。连续 live-run 用 `iterate:ingest` 收口（进行中只允许
+  `--snapshot`，不写 FAIL、不开 validator）。Codex forensics / rollout 用 `iterate:trace`
+  只读评分，不能冒充 IPH live-run。过程门区分 M3 的 hub wait 与 specialist 的
+  平台 pty；`session_exit` 挂起工具进入效率诊断。Replay 走 HarnessFix 回归感知接受
+  （目标缺陷消失、held-out reuseKey 不崩、角色记分不降）。结局类吸收 AI Harness
+  Engineering 的 `assisted_verified_success` / `unsafe_invalid`。L5 隔离试次使用一次性
+  `--run-root` 做 pass^k，禁止用仓根当研究根。L6 对照 HarnessFix 四消融（prompt-only /
+  无轨迹 / 自由编辑 / 无回归门）。写前拒绝走 HarnessBridge CES（无证据则 Pass）。
+  SIF 不进 npm 插件包，
+  不注册 `iph_*` 工具，不在科研会话内进化 harness。IPH lock 升级走 `iterate:lock-bump`，
+  只写候选文件。
 - 增加 `harness_run.json` 立题时钟：期刊 45 分钟、博士 3 小时计到 `DIRECTION_LOCK`；
   `iph_status` / `iph_transition_plan` 报告剩余时间和 overrun。overrun 只警告，不跳门、
   不伪造 N0-4C。默认同一会话连续提交相邻边直到方案冻结或诚实负终态。
 - 期刊与博士共用状态机，但证据劳动量分流：期刊 K=3–8、一轮碰撞；博士按 A/B/C 展开。
   specialist 改为先读 briefing 章节指针，禁止把旧项目书目批量登记为近邻。
+- 续跑后 specialist 身份写入 `.iph_specialist_runtime.json`；未绑定或过期的完成身份
+  不可复用，必须新派。禁止用 bash 翻 `.harness-sessions`。可变注册表指针若被误放进
+  `artifacts` 会自动剥离；L1/L2 卡片等不可变哈希文件不会被剥掉。L1 的
+  `literature_claim_registry.json` 禁止非空 records。K 集合归档拒绝出版商落地页，
+  缺失公开 PDF 是可修复缺陷，不是 BLOCKED_CAPABILITY。
 
 ## 0.0.4 - 2026-08-14
 

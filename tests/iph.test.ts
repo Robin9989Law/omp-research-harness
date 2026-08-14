@@ -15,6 +15,7 @@ import {
 	evidenceLaborForOutput,
 	EXIT_STATUS,
 	executableText,
+	dropFrozenPointerArtifacts,
 	eventFlowSnapshot,
 	findResearchRoot,
 	inspectHarnessRun,
@@ -22,12 +23,17 @@ import {
 	inspectSpecialistCompletion,
 	JOURNAL_DIRECTION_LOCK_BUDGET_MS,
 	JOURNAL_NODE_BUDGET_MS,
+	kFulltextArchiveIssue,
+	l1ClaimRegistryIssue,
+	archivedSourceLooksLikeArticle,
 	mutableArtifactConflicts,
 	nodeBriefing,
 	nodeBudgetTable,
 	isSanctionedReviewerTask,
 	liveReviewerIdentity,
 	recordSubagentLifecycle,
+	sessionForensicsIssue,
+	SPECIALIST_RUNTIME_FILE,
 	N0_REQUIRED_NEXT_ACTIONS,
 	POSITIVE_STATE_SEQUENCE,
 	requiredNextAction,
@@ -454,6 +460,115 @@ describe("M3 control-plane routing", () => {
 			["near_neighbor_registry.json", "scope_lock.md"],
 			["literature_registry=near_neighbor_registry.json", "scope_lock=scope_lock.md"],
 		)).toEqual(["literature_registry=near_neighbor_registry.json"]);
+		expect(dropFrozenPointerArtifacts(
+			["near_neighbor_registry.json", "literature_claim_registry.json", "scope_lock.md"],
+			[
+				"literature_registry=near_neighbor_registry.json",
+				"claim_registry=literature_claim_registry.json",
+				"frontier_coverage=frontier_coverage.json",
+			],
+		)).toEqual({
+			artifacts: ["scope_lock.md"],
+			dropped: ["near_neighbor_registry.json", "literature_claim_registry.json"],
+		});
+		expect(dropFrozenPointerArtifacts(
+			["l1-card.md"],
+			["l1_card=l1-card.md"],
+		)).toEqual({
+			artifacts: ["l1-card.md"],
+			dropped: [],
+		});
+	});
+
+	test("persists specialist bindings across process-local registry clears", async () => {
+		clearRuntimeRegistryForTests();
+		const root = await mkdtemp(path.join(tmpdir(), "iph-specialist-persist-"));
+		try {
+			await writeFile(path.join(root, "workflow_state.json"), "{}\n");
+			const sessionFile = path.join(root, ".harness-sessions", "FrontierPersist.jsonl");
+			await mkdir(path.dirname(sessionFile), { recursive: true });
+			recordSubagentLifecycle({
+				id: "FrontierPersist",
+				agent: "frontier-auditor",
+				status: "completed",
+				sessionFile,
+			}, { researchRoot: root, target: "RECENT_FRONTIER", agents: new Set(["frontier-auditor"]) });
+			expect(await Bun.file(path.join(root, SPECIALIST_RUNTIME_FILE)).exists()).toBeTrue();
+			clearRuntimeRegistryForTests();
+			expect(inspectSpecialistCompletion(
+				"FrontierPersist", "frontier-auditor", root, "RECENT_FRONTIER",
+			).completed).toBeTrue();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+			clearRuntimeRegistryForTests();
+		}
+	});
+
+	test("refuses unbound completed specialists and forbids session forensics", () => {
+		clearRuntimeRegistryForTests();
+		recordSubagentLifecycle({
+			id: "FrontierUnbound",
+			agent: "frontier-auditor",
+			status: "completed",
+			sessionFile: "/tmp/frontier-unbound.jsonl",
+		});
+		const inspection = inspectSpecialistCompletion(
+			"FrontierUnbound", "frontier-auditor", "/tmp/research-unbound", "RECENT_FRONTIER",
+		);
+		expect(inspection.status).toBe("binding_mismatch");
+		expect(inspection.diagnosis).toContain("Dispatch a NEW frontier-auditor");
+		expect(inspection.diagnosis).toContain(".harness-sessions");
+		const snapshot = eventFlowSnapshot("/tmp/research-unbound", "RECENT_FRONTIER", "frontier-auditor");
+		expect(snapshot.recommendation).toBe("DISPATCH_REQUIRED");
+		expect(snapshot.recovery).toContain("Dispatch a NEW frontier-auditor");
+		expect(sessionForensicsIssue("bash", {}, "rg specialistAgentId .harness-sessions")).toContain("iph_event_snapshot");
+		expect(sessionForensicsIssue("read", { path: "/tmp/root/.harness-sessions/parent.jsonl" })).toContain("NEW specialist");
+		expect(sessionForensicsIssue("bash", {}, "ls")).toBeUndefined();
+	});
+
+	test("rejects L1 atomic claim records before entering the frontier gates", async () => {
+		const root = await mkdtemp(path.join(tmpdir(), "iph-l1-claims-"));
+		try {
+			await writeFile(path.join(root, "literature_claim_registry.json"), JSON.stringify({
+				schema_version: "2.0",
+				records: [{ claim_id: "LC-0001" }],
+			}));
+			expect(await l1ClaimRegistryIssue(root, "RECENT_FRONTIER")).toContain("budget=0");
+			expect(await l1ClaimRegistryIssue(root, "L1_FREEZE")).toBeUndefined();
+			await writeFile(path.join(root, "literature_claim_registry.json"), JSON.stringify({
+				schema_version: "2.0",
+				records: [],
+			}));
+			expect(await l1ClaimRegistryIssue(root, "RECENT_FRONTIER")).toBeUndefined();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("rejects publisher landing pages as K-set full text", async () => {
+		expect(archivedSourceLooksLikeArticle(Buffer.from("%PDF-1.4\n"), "W-0001.pdf")).toBeTrue();
+		expect(archivedSourceLooksLikeArticle(
+			Buffer.from("<html><title>On Measuring Faithfulness - ACL Anthology</title><p>abstract</p></html>"),
+			"W-0001.html",
+		)).toBeFalse();
+		const root = await mkdtemp(path.join(tmpdir(), "iph-k-fulltext-"));
+		try {
+			await mkdir(path.join(root, "literature_archive"));
+			await writeFile(path.join(root, "current_evidence_scope.json"), JSON.stringify({
+				schema_version: "2.0",
+				fulltext_registry_ids: ["W-0001"],
+				atomic_claim_ids: [],
+			}));
+			await writeFile(
+				path.join(root, "literature_archive", "W-0001.html"),
+				"<html><title>Paper - ACL Anthology</title><meta name='citation_abstract' content='x'></html>\n",
+			);
+			expect(await kFulltextArchiveIssue(root, "K_CLAIM_REGISTER")).toContain("landing/abstract");
+			await writeFile(path.join(root, "literature_archive", "W-0001.pdf"), "%PDF-1.4\n% article\n");
+			expect(await kFulltextArchiveIssue(root, "K_CLAIM_REGISTER")).toBeUndefined();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 
 	test("removes caller schemas only from scientific specialist tasks", () => {

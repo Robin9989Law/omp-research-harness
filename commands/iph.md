@@ -25,6 +25,11 @@ Before drafting or advancing, call `iph_transition_plan`. If it names a speciali
 that exact task agent and pass the completed task ID back as `specialistAgentId`. Include the
 node timebox and evidence-labor bounds in the task text. M3 remains the coordinator and must
 not inline frontier, layer, atomic-claim or collision judgments.
+If `iph_event_snapshot` or a blocked advance reports UNBOUND, STALE, or
+binding_mismatch, dispatch a NEW specialist; never reuse that agent ID and never
+inspect `.harness-sessions`. L1 claim registry records must stay empty.
+K-set archives must be PDFs or full-article HTML, not publisher landing pages;
+missing public full text is a repair, not BLOCKED_CAPABILITY.
 Call `task` with only `context` plus each item's `name`, `agent`, and `task`; omit
 `outputSchema` and `schemaMode` for these specialists. Call every `iph_*` tool directly by
 its exact name; never invent `ipc_call` or another wrapper.

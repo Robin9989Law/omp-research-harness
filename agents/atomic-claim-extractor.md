@@ -24,6 +24,10 @@ demand-pull extraction:
   required, full-text SHA-256 and DOI/URL.
 - Use only the allowed relation types: OCCUPIES, ENABLES, CONTRADICTS, BOUNDS, NEUTRAL.
 - Never infer an unobserved claim, broaden wording, or extract chapter summaries.
+- Publisher landing pages, ACL Anthology chrome, arXiv `/abs`, and ICLR hash pages are
+  not full text. If `literature_archive/` contains those pages, report that exact gap
+  and stop. Do not invent locators, and do not call this BLOCKED_CAPABILITY; the parent
+  must replace the files with PDF or full-article HTML and dispatch a new extractor.
 
 Write only the assigned claim-registry artifact. Do not edit `workflow_state.json`, gates,
 decision logs, review artifacts or validation logs. Report unresolved locators as BLOCKED;

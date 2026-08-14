@@ -1,0 +1,178 @@
+# File-level impact map. Unknown paths conservatively require L0–L4.
+surfaces:
+  - match: "sif/**"
+    layers: [L0, L1]
+    nodes: []
+    failures: []
+    ablation: false
+    classes: [sif]
+  - match: "tests/**"
+    layers: [L0, L1]
+    nodes: []
+    failures: []
+    ablation: false
+    classes: [sif]
+  - match: "docs/**"
+    layers: [L0]
+    nodes: []
+    failures: []
+    ablation: false
+    classes: [sif]
+  - match: "CHANGELOG.md"
+    layers: [L0]
+    nodes: []
+    failures: []
+    ablation: false
+    classes: [sif]
+  - match: "README.md"
+    layers: [L0, L4]
+    nodes: []
+    failures: []
+    ablation: false
+    classes: [install]
+  - match: "agents/frontier-auditor.md"
+    layers: [L0, L5]
+    nodes: [3, 4]
+    failures: [F13, F14, F31]
+    ablation: true
+    classes: [prompt]
+  - match: "agents/layer-adjudicator.md"
+    layers: [L0, L5]
+    nodes: [5, 6, 7]
+    failures: [F13, F21, F22]
+    ablation: true
+    classes: [prompt]
+  - match: "agents/atomic-claim-extractor.md"
+    layers: [L0, L5]
+    nodes: [9]
+    failures: [F13]
+    ablation: true
+    classes: [prompt]
+  - match: "agents/collision-synthesizer.md"
+    layers: [L0, L5]
+    nodes: [10]
+    failures: [F13]
+    ablation: true
+    classes: [prompt]
+  - match: "agents/iph-reviewer.md"
+    layers: [L0, L5]
+    nodes: [17, 21]
+    failures: [F8, F27, F28]
+    ablation: true
+    classes: [prompt]
+  - match: "agents/event-flow-manager.md"
+    layers: [L0, L2, L5]
+    nodes: []
+    failures: [F20, F23, F25]
+    ablation: true
+    classes: [prompt]
+  - match: "SYSTEM.md"
+    layers: [L0, L4, L5]
+    nodes: []
+    failures: [F11]
+    ablation: true
+    classes: [prompt]
+  - match: "SYSTEM_TEST_MATRIX.md"
+    layers: [L0]
+    nodes: []
+    failures: []
+    ablation: false
+    classes: [sif]
+  - match: "AGENT_NATIVE_ENGINEERING.md"
+    layers: [L0]
+    nodes: []
+    failures: []
+    ablation: true
+    classes: [prompt]
+  - match: "extensions/iph.ts"
+    layers: [L0, L1, L2, L3, L4]
+    nodes: []
+    failures: [F1, F2, F4, F6, F7, F9, F11, F12, F16, F18, F19, F21, F22, F32]
+    ablation: false
+    classes: [control-plane]
+  - match: "config/iph-lock.json"
+    layers: [L0, L1, L4]
+    nodes: []
+    failures: [F10]
+    ablation: false
+    classes: [validator]
+    nodesRequired: true
+  - match: "config/model-roles.yml"
+    layers: [L0, L2, L5]
+    nodes: []
+    failures: [F23, F25]
+    ablation: false
+    classes: [control-plane]
+  - match: "config/**"
+    layers: [L0, L4]
+    nodes: []
+    failures: [F10]
+    ablation: false
+    classes: [install]
+  - match: "schemas/**"
+    layers: [L0, L1]
+    nodes: []
+    failures: []
+    ablation: false
+    classes: [topology]
+  - match: "commands/**"
+    layers: [L0, L2]
+    nodes: []
+    failures: [F11]
+    ablation: false
+    classes: [control-plane]
+  - match: "scripts/agent-node-fixtures.ts"
+    layers: [L0, L1]
+    nodes: []
+    failures: [F29, F30]
+    ablation: false
+    classes: [validator]
+    nodesRequired: true
+  - match: "scripts/*e2e.ts"
+    layers: [L0, L2, L4]
+    nodes: []
+    failures: [F24, F26]
+    ablation: false
+    classes: [sif]
+  - match: "scripts/system-matrix.ts"
+    layers: [L0]
+    nodes: []
+    failures: []
+    ablation: false
+    classes: [topology]
+  - match: "scripts/run-local-omp.sh"
+    layers: [L0, L2]
+    nodes: []
+    failures: [F24]
+    ablation: false
+    classes: [control-plane]
+  - match: "scripts/check-package.ts"
+    layers: [L0, L4]
+    nodes: []
+    failures: []
+    ablation: false
+    classes: [install]
+  - match: "tsconfig.json"
+    layers: [L0]
+    nodes: []
+    failures: []
+    ablation: false
+    classes: [sif]
+  - match: ".gitignore"
+    layers: [L0]
+    nodes: []
+    failures: []
+    ablation: false
+    classes: [sif]
+  - match: "package.json"
+    layers: [L0, L4]
+    nodes: []
+    failures: [F10, F26]
+    ablation: false
+    classes: [install]
+  - match: ".github/**"
+    layers: [L0, L4]
+    nodes: []
+    failures: [F10]
+    ablation: false
+    classes: [install]
