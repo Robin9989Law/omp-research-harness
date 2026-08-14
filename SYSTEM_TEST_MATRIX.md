@@ -95,6 +95,7 @@ state hash、STOP lock、validation log 和工具调用序列，回到对应层�
 
 ```text
 bun run test:nodes -- --pdf-cache <pinned-pdf>
+bun run test:models -- --fixture-root <fresh-root>
 ```
 
 它分别证明 22 个源状态都能被权威 validator 接受、N0-1/N0-2/N0-3 不会被强推为正结果、

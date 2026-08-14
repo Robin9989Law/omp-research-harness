@@ -483,6 +483,7 @@ export IPH_SKILL_DIR=/absolute/path/to/innovation-proposition-hunting
 
 bun run check
 bun run test:nodes -- --pdf-cache /absolute/path/to/pinned-W-0001.pdf
+bun run test:models -- --fixture-root /tmp/iph-agent-node-fixtures-full.<id>
 bun run release:check
 omp plugin link .
 omp plugin doctor @prcbooboo/omp-research-harness
@@ -496,6 +497,11 @@ omp plugin doctor @prcbooboo/omp-research-harness
 `test:nodes` 会从 fresh fixture 重新验证 22 个源状态、N0-1/N0-2/N0-3 终态语义和 Node 18–22
 连续事务。`--pdf-cache` 不是跳过来源校验：缓存 PDF 仍必须命中代码固定的官方 SHA-256；有网络时也可
 省略该参数并从官方 PMLR 地址重新获取。这个确定性测试不能替代真实 M3/specialist 行为重放。
+
+`test:models` 从 fresh `independent_review` fixture 开始，每回合只让 M3 提交一条边，真实重放
+Node 17–22。它使用隔离的临时 OMP runtime，自动批准工具请求，逐节点保存输出、运行时
+`model_change`、state/STOP 和 strict validator 结果；临时认证数据库在结束时删除，最终只保留不含密钥的
+`evidence.json` 与日志。先用 `--dry-run` 检查输入，不会调用模型。
 
 ## 相关项目
 

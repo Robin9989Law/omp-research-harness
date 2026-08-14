@@ -34,6 +34,7 @@
     "test:omp": "bun scripts/omp-e2e.ts",
     "test:system": "bun scripts/system-matrix.ts",
     "test:nodes": "bun scripts/full-node-e2e.ts",
+    "test:models": "bun scripts/real-model-node-e2e.ts",
     "test:package": "bun scripts/package-e2e.ts",
     "debug:omp": "bash scripts/run-local-omp.sh",
     "typecheck": "tsc --noEmit",

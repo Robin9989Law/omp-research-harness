@@ -117,18 +117,20 @@ DeepSeek V4 Flash 单次投影约数秒；在 3 个工作任务运行时准确�
 ### omp-research-harness
 
 本轮后续关键提交从 `e089e1d` 的全边 agent-runnable fixture，到 `cd9de73` 的 reviewer/最小读题范围、
-`744a07b` 的确定性恢复诊断。其后 reviewer 父 task 边界、晚期连续 E2E、N0 终态 E2E 与本文档更新
-已完成工作区修改，但当前 Codex 沙箱把 `.git` 设为只读，`git commit` 返回 `index.lock: Operation not permitted`；
-这些修改不得虚报为已提交，待写权限恢复后统一做本地里程碑 commit。
+`744a07b` 的确定性恢复诊断。reviewer 父 task 边界、晚期连续 E2E、N0 终态 E2E 与本文档更新
+已于 `13763bc` 做本地里程碑提交。其后新增的 `test:models` 真实模型逐节点回放器及其 README/测试矩阵入口
+已通过 typecheck、dry-run 和全量 `bun run check`，但当前 Codex 沙箱又把 `.git` 设为只读，
+`git commit` 返回 `index.lock: Operation not permitted`；这一批新增修改不得虚报为已提交。
 
 ## 发布结论
 
-确定性本地门已满足，但真实模型最终门尚未满足：需要在模型网络恢复后重新跑 Node 17–22，并保存
-M3、reviewer 与 event manager 的正式 lifecycle/model trace。当前也尚有因 `.git` 只读而无法提交的工作区修改。
+确定性本地门已满足，但真实模型最终门尚未满足：需要在模型网络恢复后用 `test:models`
+重新跑 Node 17–22，并保存 M3、reviewer 与 event manager 的正式 lifecycle/model trace。当前也尚有因
+`.git` 只读而无法提交的回放器及文档入口修改。
 因此本轮不 push、不发布 npm，也不声称“全部生产条件稳健”。恢复两项外部能力后，顺序必须是：
 
-1. fresh fixture 上真实重跑 Node 17；
-2. 同一运行器真实重跑 Node 18–22；
+1. 执行 `bun run test:models -- --fixture-root <fresh-root>`，在 fresh fixture 上真实重跑 Node 17；
+2. 由同一运行器逐边重跑 Node 18–22；
 3. 重跑单任务事件流与 1,101 条混合压力流，记录有/无 Flash 消融；
 4. `bun run check` + 两个新增事务 E2E；
 5. 本地 commit；用户实测通过后才考虑 push/npm。
