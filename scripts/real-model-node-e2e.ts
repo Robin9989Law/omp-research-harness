@@ -71,11 +71,15 @@ async function toolCalls(root: string, sinceMs: number): Promise<JsonObject[]> {
 				if (entry.type !== "message" || entry.message?.role !== "assistant") continue;
 				for (const content of Array.isArray(entry.message.content) ? entry.message.content : []) {
 					if (content?.type === "toolCall" && typeof content.name === "string") {
+						const bridged = content.name === "write" && typeof content.arguments?.path === "string"
+							? /^xd:\/\/(iph_[a-z0-9_]+)$/.exec(content.arguments.path)?.[1]
+							: undefined;
+						const observedName = bridged ?? content.name;
 						const relativeFile = path.relative(root, file);
-						const key = `${relativeFile}\0${content.name}`;
+						const key = `${relativeFile}\0${observedName}`;
 						const existing = counts.get(key);
 						if (existing) existing.count += 1;
-						else counts.set(key, { file: relativeFile, name: content.name, count: 1 });
+						else counts.set(key, { file: relativeFile, name: observedName, count: 1, transport: bridged ? "xd-write-bridge" : "direct" });
 					}
 				}
 			} catch {

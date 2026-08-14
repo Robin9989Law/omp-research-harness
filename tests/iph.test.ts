@@ -42,6 +42,7 @@ import {
 	validateLifecycleState,
 	verifySkillLock,
 	waitForSpecialistCompletion,
+	xdIphToolName,
 } from "../extensions/iph";
 
 describe("exit status translation", () => {
@@ -228,6 +229,15 @@ describe("M3 control-plane routing", () => {
 		expect(specialistFailureInputIssue(state, { ...valid, specialistDisposition: "OVERRIDDEN" })).toContain("ACCEPTED");
 		expect(specialistFailureInputIssue(state, { ...valid, gates: ["literature_registry_valid=false"] })).toContain("cannot mutate gates");
 		expect(specialistFailureInputIssue({ active_state: "INDEPENDENT_REVIEW" } as never, valid)).toContain("no non-reviewer specialist");
+	});
+
+	test("recognizes only exact whitelisted xd IPH tool bridges", () => {
+		expect(xdIphToolName("write", { path: "xd://iph_advance" })).toBe("iph_advance");
+		expect(xdIphToolName("write", { path: "xd://iph_validate" })).toBe("iph_validate");
+		expect(xdIphToolName("write", { path: "xd://bash" })).toBeUndefined();
+		expect(xdIphToolName("write", { path: "xd://iph_not_registered" })).toBeUndefined();
+		expect(xdIphToolName("edit", { path: "xd://iph_advance" })).toBeUndefined();
+		expect(xdIphToolName("write", { path: "xd://iph_advance/../bash" })).toBeUndefined();
 	});
 
 	test("reads specialist model identity from its authenticated session rather than free text", async () => {

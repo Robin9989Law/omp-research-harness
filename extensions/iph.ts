@@ -362,6 +362,13 @@ const IPH_TOOL_NAMES = new Set([
 	"iph_handover",
 	"iph_event_snapshot",
 ]);
+
+export function xdIphToolName(toolName: string, input: Record<string, unknown>): string | undefined {
+	if (toolName !== "write") return undefined;
+	const target = text(input.path || input.filePath || input.file_path).trim();
+	const match = /^xd:\/\/(iph_[a-z0-9_]+)$/.exec(target);
+	return match && IPH_TOOL_NAMES.has(match[1]!) ? match[1] : undefined;
+}
 const SPECIALIST_TASK_AGENTS = new Set([
 	"frontier-auditor",
 	"layer-adjudicator",
@@ -2839,6 +2846,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 		if (!root) return;
 		const state = await readWorkflow(root);
 		if (!state) return;
+		const bridgedIphTool = xdIphToolName(event.toolName, event.input as unknown as Record<string, unknown>);
 		const reviewerIdentity = reviewerIdentityForContext(ctx);
 		const sanitizedSpecialistTask = event.toolName === "task"
 			? sanitizeSpecialistTaskInput(event.input)
@@ -2921,7 +2929,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 			}
 		}
 
-		if (!IPH_TOOL_NAMES.has(event.toolName)) {
+		if (!IPH_TOOL_NAMES.has(event.toolName) && !bridgedIphTool) {
 			try {
 				pendingSnapshots.set(
 					`${ctx.sessionManager.getSessionId()}\0${event.toolCallId}`,
