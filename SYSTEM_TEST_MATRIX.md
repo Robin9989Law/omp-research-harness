@@ -28,7 +28,7 @@
 | E2/audit | OUTPUT_CLAIM_BIND → EVIDENCE_VALIDATE → N0_AUDIT | M3 | 证伪书与 N0 正/负终态 |
 | E3/precompute | N0_AUDIT → CLAIM_FREEZE → VALIDITY_AUDIT → INDEPENDENT_REVIEW → DIRECTION_LOCK | M3 + review / DeepSeek V4 Pro | N0-4C、V1/V2、运行时绑定 V3 |
 | E4 | DIRECTION_LOCK → COMPUTE → POSTCOMPUTE_CLAIM_FREEZE | M3 | 用户授权不旁路 N0-4C/V3，S4 后新 epoch |
-| E3/final | POSTCOMPUTE_CLAIM_FREEZE → FINAL_VALIDITY_AUDIT → FINAL_LOCK → COMPLETE | review / DeepSeek V4 Pro + M3 | 当前 bundle 的 V4 与最终锁 |
+| E3/final | POSTCOMPUTE_CLAIM_FREEZE → FINAL_VALIDITY_AUDIT → FINAL_LOCK → COMPLETE | iph-reviewer / DeepSeek V4 Pro + M3 | 当前 bundle 的 V4 与最终锁；reviewer 为认证 specialist，不允许 M3 自审 |
 
 `auditSystemTopology()` 在单元测试中逐边核对上述 23 节点、目标唯一性、专家角色、
 禁止动作合同和 mutable/immutable 工件冲突。任何新增、删减或改向都会使测试失败。

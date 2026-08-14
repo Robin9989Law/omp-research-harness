@@ -31,6 +31,8 @@ interface WorkflowState {
 	gates?: Record<string, unknown>;
 	artifacts?: Record<string, unknown>;
 	independent_audit?: Record<string, unknown>;
+	compute_stage?: unknown;
+	compute_evidence?: Record<string, unknown>;
 	decision_log?: unknown;
 	review_artifact_sha256?: unknown;
 	updated_at?: unknown;
@@ -99,7 +101,7 @@ interface FileTransactionSnapshot {
 
 interface TransitionPlan {
 	target: string;
-	specialist?: "frontier-auditor" | "layer-adjudicator" | "atomic-claim-extractor" | "collision-synthesizer";
+	specialist?: "frontier-auditor" | "layer-adjudicator" | "atomic-claim-extractor" | "collision-synthesizer" | "iph-reviewer";
 	requiredDrafts: string[];
 	stateArtifacts: string[];
 	immutableArtifacts: string[];
@@ -118,20 +120,50 @@ const TARGET_GATE_ASSIGNMENTS: Record<string, string[]> = {
 	K_CLAIM_REGISTER: ["k_claims_complete=true"],
 	OUTPUT_CLAIM_BIND: ["output_claims_traced=true"],
 	EVIDENCE_VALIDATE: ["evidence_validated=true"],
-	N0_AUDIT: ["n0_4_locked=true"],
 };
 
-export function transitionGateIssue(target: string, assignments: string[]): string | undefined {
-	const required = TARGET_GATE_ASSIGNMENTS[target] ?? [];
+const TARGET_GATE_KEYS: Record<string, string[]> = {
+	...Object.fromEntries(Object.entries(TARGET_GATE_ASSIGNMENTS).map(([target, assignments]) => [
+		target,
+		assignments.map(assignment => assignment.split("=", 1)[0]!),
+	])),
+	N0_AUDIT: ["n0_4_locked"],
+};
+
+export function requiredGateAssignments(target: string, noveltyLevel?: string): string[] {
+	if (target !== "N0_AUDIT") return TARGET_GATE_ASSIGNMENTS[target] ?? [];
+	if (noveltyLevel === "N0-4C") return ["n0_4_locked=true"];
+	if (["N0-1", "N0-2", "N0-3"].includes(noveltyLevel ?? "")) return ["n0_4_locked=false"];
+	return ["n0_4_locked=true only for N0-4C; false for N0-1/N0-2/N0-3"];
+}
+
+export function transitionGateIssue(target: string, assignments: string[], noveltyLevel?: string): string | undefined {
+	if (target === "N0_AUDIT" && !["N0-1", "N0-2", "N0-3", "N0-4C"].includes(noveltyLevel ?? "")) {
+		return "N0_AUDIT requires noveltyLevel N0-1|N0-2|N0-3|N0-4C";
+	}
+	const required = requiredGateAssignments(target, noveltyLevel);
 	const observed = new Set(assignments);
 	const missing = required.filter(assignment => !observed.has(assignment));
 	if (missing.length > 0) return `missing target gate assignments: ${missing.join(", ")}`;
-	const future = Object.entries(TARGET_GATE_ASSIGNMENTS)
+	const observedKeys = assignments.map(assignment => assignment.split("=", 1)[0]!);
+	const foreign = Object.entries(TARGET_GATE_KEYS)
 		.filter(([state]) => state !== target)
-		.flatMap(([state, gates]) => gates.map(gate => ({ state, gate })))
-		.find(({ gate }) => observed.has(gate) && !required.includes(gate));
-	if (future) return `gate ${future.gate} belongs to ${future.state}, not target ${target}`;
+		.flatMap(([state, keys]) => keys.map(key => ({ state, key })))
+		.find(({ key }) => observedKeys.includes(key));
+	if (foreign) return `gate ${foreign.key} belongs to ${foreign.state}, not target ${target}`;
 	return undefined;
+}
+
+export function transitionTargetIssue(state: WorkflowState | undefined, target: string): string | undefined {
+	if (!state) return "workflow_state.json is unreadable";
+	if (target === "BLOCKED") return ["BLOCKED", "COMPLETE"].includes(text(state.active_state))
+		? `${text(state.active_state)} cannot enter BLOCKED`
+		: undefined;
+	const plan = transitionPlanForState(state);
+	if (!plan) return `${text(state.active_state) || "(unknown state)"} has no positive transition`;
+	return plan.target === target
+		? undefined
+		: `state skip rejected: ${text(state.active_state)} must transition to ${plan.target}, not ${target}`;
 }
 
 const L1_L2_STATES = new Set([
@@ -164,6 +196,18 @@ export function nextActionIssue(target: string, nextAction: string): string | un
 	return nextAction.includes(nextTarget)
 		? undefined
 		: `nextAction after ${target} must explicitly name immediate target ${nextTarget}`;
+}
+
+function targetSemanticInputs(target: string): string[] {
+	switch (target) {
+		case "N0_AUDIT": return ["noveltyLevel is required; pair N0-4C with n0_4_locked=true and every other verdict with false"];
+		case "VALIDITY_AUDIT": return ["claimBundleManifest is required for the current epoch; validityLevel is derived atomically as V1"];
+		case "INDEPENDENT_REVIEW": return ["validityLevel is derived atomically as V2"];
+		case "COMPUTE": return ["computeAuthorizationNote is required and must cite explicit user authorization; the transaction starts S0"];
+		case "POSTCOMPUTE_CLAIM_FREEZE": return ["computeEvidence must name an S4 JSON artifact"];
+		case "FINAL_VALIDITY_AUDIT": return ["claimBundleManifest must name the exactly +1 epoch manifest"];
+		default: return [];
+	}
 }
 
 interface NodeExample {
@@ -304,13 +348,14 @@ export function nodeBriefing(
 		],
 		outputContract: {
 			requiredDrafts: plan.requiredDrafts,
-			requiredGateAssignments: TARGET_GATE_ASSIGNMENTS[plan.target] ?? [],
+			requiredGateAssignments: requiredGateAssignments(plan.target),
 			requiredContribution: L1_L2_STATES.has(plan.target)
 				? "NONE or omit"
 				: text(state.output_type) === "JOURNAL_ARTICLE" ? "M (first L3 transition may omit and default to M)" : "A, B, or C",
 			postCommitNextTarget: TRANSITION_PLANS[plan.target]?.target ?? null,
 			stateArtifacts: plan.stateArtifacts,
 			immutableArtifacts: plan.immutableArtifacts,
+			semanticInputs: targetSemanticInputs(plan.target),
 		},
 		examples: example,
 		completionProof: [
@@ -438,14 +483,14 @@ const TRANSITION_PLANS: Record<string, TransitionPlan> = {
 	N0_AUDIT: {
 		target: "CLAIM_FREEZE",
 		requiredDrafts: ["claim_inventory.json", "claim-freeze.md"],
-		stateArtifacts: [],
+		stateArtifacts: ["claim_inventory=claim_inventory.json"],
 		immutableArtifacts: ["claim-freeze.md"],
 		forbidden: ["advancing unless novelty_level is N0-4C", "research computation"],
 	},
 	CLAIM_FREEZE: {
 		target: "VALIDITY_AUDIT",
 		requiredDrafts: ["claim_inventory.json", "audit_manifest.json"],
-		stateArtifacts: [],
+		stateArtifacts: ["claim_inventory=claim_inventory.json", "audit_manifest=audit_manifest.json"],
 		immutableArtifacts: [],
 		forbidden: ["changing claim profile to avoid obligations", "self-attesting tests", "research computation"],
 	},
@@ -458,6 +503,7 @@ const TRANSITION_PLANS: Record<string, TransitionPlan> = {
 	},
 	INDEPENDENT_REVIEW: {
 		target: "DIRECTION_LOCK",
+		specialist: "iph-reviewer",
 		requiredDrafts: ["independent_audit.json"],
 		stateArtifacts: [],
 		immutableArtifacts: [],
@@ -479,13 +525,21 @@ const TRANSITION_PLANS: Record<string, TransitionPlan> = {
 	},
 	POSTCOMPUTE_CLAIM_FREEZE: {
 		target: "FINAL_VALIDITY_AUDIT",
-		requiredDrafts: ["claim_inventory.json", "audit_manifest.json"],
-		stateArtifacts: [],
+		requiredDrafts: ["postcompute/claim_inventory.json", "postcompute/audit_manifest.json"],
+		stateArtifacts: [
+			"claim_inventory=postcompute/claim_inventory.json",
+			"audit_manifest=postcompute/audit_manifest.json",
+			"theory_obligations=postcompute/theory_obligation_registry.json",
+			"protocol_contract=postcompute/protocol_contract.json",
+			"claim_code_trace=postcompute/claim_code_trace.json",
+			"baseline_budget=postcompute/baseline_budget.json",
+		],
 		immutableArtifacts: [],
 		forbidden: ["reusing the pre-compute epoch", "copying the old bundle hash", "weakening changed claims silently"],
 	},
 	FINAL_VALIDITY_AUDIT: {
 		target: "FINAL_LOCK",
+		specialist: "iph-reviewer",
 		requiredDrafts: ["independent_audit.json"],
 		stateArtifacts: [],
 		immutableArtifacts: [],
@@ -532,6 +586,8 @@ export function auditSystemTopology(): string[] {
 		LAYER_DECISION: "layer-adjudicator",
 		SYNTHESIZE_COLLISION: "atomic-claim-extractor",
 		OUTPUT_CLAIM_BIND: "collision-synthesizer",
+		DIRECTION_LOCK: "iph-reviewer",
+		FINAL_LOCK: "iph-reviewer",
 	};
 	for (const [target, specialist] of Object.entries(specialistTargets)) {
 		if (requiredSpecialistForTarget(target) !== specialist) {
@@ -2001,7 +2057,7 @@ export default function iphExtension(pi: ExtensionAPI) {
 					blockedReasons: state.blocked_reasons,
 					nextRequiredAction: state.next_required_action,
 					...plan,
-					requiredGateAssignments: TARGET_GATE_ASSIGNMENTS[plan.target] ?? [],
+					requiredGateAssignments: requiredGateAssignments(plan.target),
 					requiredContribution: L1_L2_STATES.has(plan.target)
 						? "NONE or omit"
 						: text(state.output_type) === "JOURNAL_ARTICLE" ? "M (first L3 transition may omit and default to M)" : "A, B, or C",
@@ -2052,6 +2108,10 @@ export default function iphExtension(pi: ExtensionAPI) {
 			stateArtifacts: z.array(z.string()).default(() => []).describe("Top-level artifact pointer assignments such as scope_lock=scope_lock.md; required when a newly true gate depends on the artifact"),
 			nextAction: z.string().min(1).describe("The single next_required_action after this transition"),
 			contribution: z.enum(["NONE", "M", "A", "B", "C"]).optional(),
+			noveltyLevel: z.enum(["N0-1", "N0-2", "N0-3", "N0-4C"]).optional().describe("Required only when entering N0_AUDIT; atomically paired with n0_4_locked"),
+			computeAuthorizationNote: z.string().min(1).optional().describe("Required only for DIRECTION_LOCK -> COMPUTE and only after explicit user authorization"),
+			computeEvidence: z.string().min(1).optional().describe("S4 evidence JSON required only for COMPUTE -> POSTCOMPUTE_CLAIM_FREEZE"),
+			claimBundleManifest: z.string().min(1).optional().describe("Current-epoch manifest for CLAIM_FREEZE -> VALIDITY_AUDIT, or new +1 epoch manifest for POSTCOMPUTE_CLAIM_FREEZE -> FINAL_VALIDITY_AUDIT"),
 			blockedReason: z.string().optional(),
 			specialistAgentId: z.string().min(1).optional().describe("Completed OMP task agent ID required for frontier, layer, atomic-claim, and collision gates"),
 			specialistDisposition: z.enum(["ACCEPTED", "OVERRIDDEN"]).optional().describe("Required at specialist gates: accept the peer conclusion or explicitly override it"),
@@ -2068,6 +2128,10 @@ export default function iphExtension(pi: ExtensionAPI) {
 				stateArtifacts?: string[];
 				nextAction: string;
 				contribution?: string;
+				noveltyLevel?: string;
+				computeAuthorizationNote?: string;
+				computeEvidence?: string;
+				claimBundleManifest?: string;
 				blockedReason?: string;
 				specialistAgentId?: string;
 				specialistDisposition?: SpecialistDisposition;
@@ -2076,6 +2140,11 @@ export default function iphExtension(pi: ExtensionAPI) {
 				root?: string;
 			};
 			const root = resolveResearchRoot(ctx.cwd, input.root);
+			const currentState = await readWorkflow(root);
+			const targetIssue = transitionTargetIssue(currentState, input.to);
+			if (targetIssue) {
+				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${targetIssue}`));
+			}
 			const mutableConflicts = mutableArtifactConflicts(input.artifacts, input.stateArtifacts ?? []);
 			if (mutableConflicts.length > 0) {
 				return toolResult(blockedResult(
@@ -2083,11 +2152,10 @@ export default function iphExtension(pi: ExtensionAPI) {
 					`mutable state pointer artifacts must not be frozen in decision_log: ${mutableConflicts.join(", ")}`,
 				));
 			}
-			const gateIssue = transitionGateIssue(input.to, input.gates);
+			const gateIssue = transitionGateIssue(input.to, input.gates, input.noveltyLevel);
 			if (gateIssue) {
 				return toolResult(blockedResult(root, `transition to ${input.to} rejected before mutation: ${gateIssue}`));
 			}
-			const currentState = await readWorkflow(root);
 			const contributionIssue = transitionContributionIssue(
 				input.to,
 				text(currentState?.output_type),
@@ -2142,6 +2210,12 @@ export default function iphExtension(pi: ExtensionAPI) {
 			for (const artifact of input.artifacts) args.push("--artifact", artifact);
 			for (const artifact of input.stateArtifacts ?? []) args.push("--set-artifact", artifact);
 			if (input.contribution) args.push("--contribution", input.contribution);
+			if (input.noveltyLevel) args.push("--novelty-level", input.noveltyLevel);
+			if (input.computeAuthorizationNote) {
+				args.push("--authorize-compute", "--authorization-note", input.computeAuthorizationNote);
+			}
+			if (input.computeEvidence) args.push("--compute-evidence", input.computeEvidence);
+			if (input.claimBundleManifest) args.push("--claim-bundle-manifest", input.claimBundleManifest);
 			if (input.blockedReason) args.push("--blocked-reason", input.blockedReason);
 			return toolResult(await runTransactionalAdvance(root, args, signal));
 		},

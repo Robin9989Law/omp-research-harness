@@ -29,6 +29,7 @@ import {
 	specialistRuntimeModelEvidence,
 	transitionPlanForState,
 	transitionGateIssue,
+	transitionTargetIssue,
 	transitionContributionIssue,
 	nextActionIssue,
 	validateLifecycleState,
@@ -102,6 +103,17 @@ describe("M3 control-plane routing", () => {
 		expect(transitionGateIssue("L2_TRIAGE", ["l2_frozen=true"])).toContain("missing target gate");
 		expect(transitionGateIssue("L2_TRIAGE", ["k_set_selected=true", "l2_frozen=true"])).toContain("belongs to LAYER_DECISION");
 		expect(transitionGateIssue("LAYER_DECISION", ["l2_frozen=true", "architecture_frozen=true"])).toBeUndefined();
+		expect(transitionGateIssue("N0_AUDIT", ["n0_4_locked=true"], "N0-4C")).toBeUndefined();
+		expect(transitionGateIssue("N0_AUDIT", ["n0_4_locked=false"], "N0-2")).toBeUndefined();
+		expect(transitionGateIssue("N0_AUDIT", ["n0_4_locked=true"], "N0-2")).toContain("missing target gate");
+		expect(transitionGateIssue("N0_AUDIT", [], undefined)).toContain("requires noveltyLevel");
+	});
+
+	test("rejects skipped state targets before any mutation", () => {
+		expect(transitionTargetIssue({ active_state: "BOOT" }, "SCOPE_LOCK")).toBeUndefined();
+		expect(transitionTargetIssue({ active_state: "BOOT" }, "RECENT_FRONTIER")).toContain("state skip rejected");
+		expect(transitionTargetIssue({ active_state: "N0_AUDIT", novelty_level: "N0-2" }, "CLAIM_FREEZE")).toContain("no positive transition");
+		expect(transitionTargetIssue({ active_state: "L2_TRIAGE" }, "BLOCKED")).toBeUndefined();
 	});
 
 	test("makes contribution and next-action parameters constructible before mutation", () => {
@@ -316,6 +328,8 @@ describe("M3 control-plane routing", () => {
 		expect(requiredSpecialistForTarget("L1_FREEZE")).toBe("layer-adjudicator");
 		expect(requiredSpecialistForTarget("SYNTHESIZE_COLLISION")).toBe("atomic-claim-extractor");
 		expect(requiredSpecialistForTarget("OUTPUT_CLAIM_BIND")).toBe("collision-synthesizer");
+		expect(requiredSpecialistForTarget("DIRECTION_LOCK")).toBe("iph-reviewer");
+		expect(requiredSpecialistForTarget("FINAL_LOCK")).toBe("iph-reviewer");
 	});
 
 	test("returns deterministic navigation through the full positive path", () => {
