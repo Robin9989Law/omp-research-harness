@@ -48,6 +48,9 @@ assert(agentNativeContract.includes("约束的是副作用，不是思考空间"
 assert(roles.default?.includes("MiniMax-M3"), "default coordinator must remain MiniMax-M3");
 assert(roles.commit === roles.default, "commit and coordinator must share the M3 selector");
 assert(roles.event === "deepseek/deepseek-v4-flash:low", "event flow must use the low-latency DeepSeek V4 Flash role");
+const localRunner = await readFile(path.join(root, "scripts", "run-local-omp.sh"), "utf8");
+assert(localRunner.includes("--plugin-dir"), "local debug runner must load the complete plugin bundle");
+assert(!localRunner.includes("--extension") && !localRunner.includes("--no-extensions"), "local debug runner must not split tools from agents");
 
 const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 assert(packageJson.version === packageJson.omp?.version, "package and OMP versions drifted");
@@ -98,6 +101,6 @@ assert(
 );
 process.stdout.write(
 	`system_matrix=READY nodes=${POSITIVE_STATE_SEQUENCE.length} transitions=${POSITIVE_STATE_SEQUENCE.length - 1} ` +
-	`specialist_edges=${specialistEdges} negative_terminals=2 failure_injections=23 state_sources=python+typescript package=${packageJson.version} ` +
+	`specialist_edges=${specialistEdges} negative_terminals=2 failure_injections=24 state_sources=python+typescript package=${packageJson.version} ` +
 	`skill=${skillLock.commit}\n`,
 );

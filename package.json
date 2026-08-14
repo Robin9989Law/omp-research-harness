@@ -34,6 +34,7 @@
     "test:omp": "bun scripts/omp-e2e.ts",
     "test:system": "bun scripts/system-matrix.ts",
     "test:package": "bun scripts/package-e2e.ts",
+    "debug:omp": "bash scripts/run-local-omp.sh",
     "typecheck": "tsc --noEmit",
     "check": "bun run typecheck && bun test && bun run test:system && bun run test:omp && bun run test:install && bun scripts/check-package.ts",
     "prepack": "bun run check",

@@ -205,7 +205,7 @@ validator。
 本项目用 [SYSTEM_TEST_MATRIX.md](SYSTEM_TEST_MATRIX.md) 管理完整验证面，并用
 [AGENT_NATIVE_ENGINEERING.md](AGENT_NATIVE_ENGINEERING.md) 固化面向 Agent 用户的接口、生命周期、
 可靠性和可观测准则：23 个正向
-状态节点、22 条迁移、专家角色路由、正负 N0 终态、23 类故障注入、STOP/BLOCKED 恢复、事务回滚、
+状态节点、22 条迁移、专家角色路由、正负 N0 终态、24 类故障注入、STOP/BLOCKED 恢复、事务回滚、
 防篡改、计算门、安装和打包。升级固定按静态拓扑 → 单元 → 真实 OMP 组件 → 故障注入
 → 部署 → 真实 M3 单步重放执行，首错即停，不靠重复清锁碰运气。
 
@@ -222,6 +222,19 @@ specialist 的论据；specialist 提供独立领域审计，validator 裁决机
 全局推理与执行预算分开：M3 可以决定继续探索，但 identity-bearing gate task 在必需工件齐备且
 validator READY 后必须先正式完成。额外阅读作为新的有界任务继续；超时留下的 draft 可以复核续接，
 超时 agent ID 不可复用。这样保留创新搜索空间，又不会让一次开放检索耗尽状态迁移凭证。
+
+### 源码调试
+
+从仓库源码做真实 OMP 重放时，必须加载完整插件根：
+
+```bash
+npm run debug:omp -- -p --model minimax-code-cn/MiniMax-M3 --thinking high \
+  --approval-mode yolo --cwd /absolute/research/root "你的测试提示词"
+```
+
+该入口使用 OMP `--plugin-dir`，会一起加载扩展工具、agents、SYSTEM 与配置。不要用
+`-e extensions/iph.ts` 代替完整产品，也不要同时传 `--no-extensions`；这两种半装载方式分别会
+造成“工具存在但 specialist 不可指派”和“规则/agent 存在但 iph 工具不可见”的假故障。
 
 #### 2.2 安装插件
 

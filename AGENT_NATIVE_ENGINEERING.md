@@ -146,6 +146,8 @@ k = 相同目标的重复运行次数
 
 复盘按 `Detect → Attribute → Repair → Rerun` 闭环。失败出现的位置不一定是根因位置；例如
 迁移门拒绝可能来自更早的 task lifecycle 竞态，而不是 `iph_advance` 参数错误。
+测试装载方式也属于 harness：只加载扩展文件或只加载 agent 目录会改变 Agent 的可见世界，
+不能拿半装载轨迹评价完整产品。源码真实测试统一以完整 plugin root 为观测边界。
 
 ## 6. 当前完成度与后续门槛
 

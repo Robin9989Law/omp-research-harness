@@ -6,6 +6,8 @@
   在任何写入前拒绝 L1/L2 贡献越层及跳态 `nextAction`。
 - 子代理实际模型身份只接受运行时 `resolvedModel` / `model_change`；`task` 无 model 参数是
   正常的角色路由接口，不再被误报为回退到默认模型。
+- 新增 `scripts/run-local-omp.sh` / `npm run debug:omp`，以 `--plugin-dir` 成套加载本地工具、
+  agents 与 SYSTEM；系统矩阵拒绝会制造半装载假故障的 `-e` / `--no-extensions` 调试入口。
 
 ## 0.0.4 - 2026-08-14
 
