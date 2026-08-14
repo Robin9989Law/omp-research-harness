@@ -1,4 +1,4 @@
-import type { FailureClass, LedgerIndex, LedgerRecord } from "./types";
+import type { FailureClass, LedgerIndex, LedgerRecord, RepairSpec } from "./types";
 
 export interface FlawRecord {
 	id: string;
@@ -11,10 +11,13 @@ export interface FlawRecord {
 	lastAt: string;
 }
 
+export const GENERIC_ARTIFACT_KEYS = new Set(["htir", "state", "workflow_state", "log"]);
+
 export function resolveFlawAnchor(
 	record: Pick<LedgerRecord, "artifacts" | "step"> & {
-		repairSpec?: { anchors?: string[] } | null;
+		repairSpec?: Pick<RepairSpec, "anchors"> | null;
 		evolutionCandidate?: { operator?: string; targetFiles?: string[] } | null;
+		flawId?: string | null;
 	},
 ): string {
 	if (record.repairSpec?.anchors && record.repairSpec.anchors.length > 0 && record.repairSpec.anchors[0]) {
@@ -23,11 +26,25 @@ export function resolveFlawAnchor(
 	if (record.evolutionCandidate?.targetFiles && record.evolutionCandidate.targetFiles.length > 0 && record.evolutionCandidate.targetFiles[0]) {
 		return record.evolutionCandidate.targetFiles[0];
 	}
+	if (record.flawId) {
+		const parts = record.flawId.split("|");
+		if (parts[2] && parts[2] !== "htir") return parts[2];
+	}
 	const artifactKeys = Object.keys(record.artifacts ?? {});
-	const nonGeneric = artifactKeys.find(key => key !== "htir" && key !== "state" && key !== "workflow_state");
+	const nonGeneric = artifactKeys.find(key => !GENERIC_ARTIFACT_KEYS.has(key));
 	if (nonGeneric) return nonGeneric;
-	if (artifactKeys.length > 0 && artifactKeys[0]) return artifactKeys[0];
 	return record.step?.backend ?? "unknown";
+}
+
+export function evolutionFromRepair(
+	repairSpec: Pick<RepairSpec, "operator" | "anchors">,
+	options?: { deleteScaffold?: boolean },
+): NonNullable<LedgerRecord["evolutionCandidate"]> {
+	return {
+		operator: repairSpec.operator,
+		deleteScaffold: options?.deleteScaffold,
+		targetFiles: repairSpec.anchors,
+	};
 }
 
 export function consolidateFlaws(ledger: LedgerIndex): FlawRecord[] {
@@ -38,7 +55,7 @@ export function consolidateFlaws(ledger: LedgerIndex): FlawRecord[] {
 		if (!failureClass) continue;
 		const operator = record.evolutionCandidate?.operator ?? "unspecified";
 		const anchor = resolveFlawAnchor(record);
-		const id = `${failureClass}|${operator}|${anchor}`;
+		const id = record.flawId ?? `${failureClass}|${operator}|${anchor}`;
 		const existing = groups.get(id);
 		if (!existing) {
 			groups.set(id, {
@@ -62,7 +79,8 @@ export function consolidateFlaws(ledger: LedgerIndex): FlawRecord[] {
 
 export function attachFlawId(
 	record: Pick<LedgerRecord, "failureClass" | "evolutionCandidate" | "artifacts" | "step"> & {
-		repairSpec?: { anchors?: string[] } | null;
+		repairSpec?: Pick<RepairSpec, "anchors"> | null;
+		flawId?: string | null;
 	},
 ): string | undefined {
 	if (!record.failureClass) return undefined;

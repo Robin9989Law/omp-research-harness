@@ -8,6 +8,7 @@ iterate       跑计划中的下一步（首错即停）
 replay        从 STOP 步重放
 ingest        收口一场已结束（或 --snapshot）的连续研究会话
 trace         只读评分 Codex rollout / forensics 导出（不写账本，不能冒充 IPH live-run）
+flaws         归并账本 FAIL 为 HarnessFix 风格缺陷记录
 lock-bump     候选 IPH lock，不改 config/iph-lock.json
 certify       双门认证，不 push / 不 publish
 ```

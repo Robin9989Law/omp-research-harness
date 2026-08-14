@@ -3,11 +3,10 @@ import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { ablationReport, type AblationLadder, type HarnessFixAblation } from "./ablation";
 import { liveDiagnostics, type LiveDiagnostics } from "./diagnostics";
-import { efficiencyFailureClass, efficiencyReport } from "./efficiency";
-import type { ResearchOutputType } from "../extensions/iph";
+import { efficiencyFailureClass, efficiencyReport, resolveOutputType } from "./efficiency";
 import { compileHtir } from "./htir";
 import { appendLedger, artifactHash, reuseKey } from "./ledger";
-import { attachFlawId } from "./flaws";
+import { attachFlawId, evolutionFromRepair } from "./flaws";
 import { classifyTerminal, dispositionFromLog, lastDecisionAt, loggedStates, outcomeReady, type WorkflowSnapshot } from "./outcome";
 import { projectionFidelity } from "./projection";
 import { attributeFailure } from "./repair";
@@ -135,7 +134,8 @@ export async function ingestLiveRun(options: {
 		budgetMs: typeof harnessRun.budget_ms === "number" ? harnessRun.budget_ms : undefined,
 		endedAt: lastDecisionAt(workflow),
 		diagnostics,
-		outputType: (workflow.output_type ?? harnessRun.output_type) as ResearchOutputType | undefined,
+		outputType: resolveOutputType(workflow.output_type ?? harnessRun.output_type),
+		nodeDurationsMs: Object.fromEntries(diagnostics.nodeDwell.map(item => [item.state, item.ms])),
 	});
 
 	let validator: IngestReport["validator"] = "skipped";
@@ -239,6 +239,9 @@ export async function ingestLiveRun(options: {
 				steps: htir.steps,
 			})
 			: undefined;
+		const evolutionCandidate = repairSpec
+			? evolutionFromRepair(repairSpec, { deleteScaffold: failureClass === "ELICITATION_REGRESSION" })
+			: null;
 		const record = await appendLedger({
 			kind: failureClass ? "FAIL" : "PASS",
 			harnessHead: workspace.head,
@@ -246,14 +249,15 @@ export async function ingestLiveRun(options: {
 			reuseKey: key,
 			step: { layer: "L5", node: null, backend: "live-continuous" },
 			failureClass: failureClass ?? null,
-			evolutionCandidate: repairSpec ? { operator: repairSpec.operator, deleteScaffold: failureClass === "ELICITATION_REGRESSION" } : null,
+			evolutionCandidate,
 			artifacts: { htir: htirArtifact },
 			scorecard,
 			flawId: repairSpec ? attachFlawId({
 				failureClass,
-				evolutionCandidate: { operator: repairSpec.operator, deleteScaffold: failureClass === "ELICITATION_REGRESSION" },
+				evolutionCandidate,
 				artifacts: { htir: htirArtifact },
 				step: { layer: "L5", node: null, backend: "live-continuous" },
+				repairSpec,
 			}) : null,
 		}, options.ledgerFile);
 		report.ledgerId = record.id;

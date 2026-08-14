@@ -42,6 +42,7 @@
     "iterate:replay": "bun sif/cli.ts replay",
     "iterate:ingest": "bun sif/cli.ts ingest",
     "iterate:trace": "bun sif/cli.ts trace",
+    "iterate:flaws": "bun sif/cli.ts flaws",
     "iterate:lock-bump": "bun sif/cli.ts lock-bump",
     "certify": "bun sif/cli.ts certify",
     "typecheck": "tsc --noEmit",

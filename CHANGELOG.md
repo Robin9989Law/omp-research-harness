@@ -10,7 +10,9 @@
   平台 pty；`session_exit` 挂起工具进入效率诊断。Replay 走 HarnessFix 回归感知接受
   （目标缺陷消失、held-out reuseKey 不崩、角色记分不降）。结局类吸收 AI Harness
   Engineering 的 `assisted_verified_success` / `unsafe_invalid`。L5 隔离试次使用一次性
-  `--run-root` 做 pass^k，禁止用仓根当研究根。L6 对照 HarnessFix 四消融（prompt-only /
+  `--run-root` 做 pass^k，禁止用仓根当研究根。失败试次也会清理一次性目录。账本 FAIL
+  用 repairSpec.anchors 作为物理锚点，不再把 `htir` 当 flaw id。`iterate:flaws` 归并复发。
+  L6 对照 HarnessFix 四消融（prompt-only /
   无轨迹 / 自由编辑 / 无回归门）。写前拒绝走 HarnessBridge CES（无证据则 Pass）。
   SIF 不进 npm 插件包，
   不注册 `iph_*` 工具，不在科研会话内进化 harness。IPH lock 升级走 `iterate:lock-bump`，

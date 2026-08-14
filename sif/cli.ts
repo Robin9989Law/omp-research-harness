@@ -8,7 +8,7 @@ import { ingestLiveRun } from "./ingest";
 import { regressionAwareAccept, heldOutRegressed } from "./accept";
 import { classifyFiles, loadImpactSurfaces } from "./impact";
 import { appendLedger, artifactHash, findReusablePass, loadLedger, reuseKey } from "./ledger";
-import { consolidateFlaws } from "./flaws";
+import { attachFlawId, consolidateFlaws, evolutionFromRepair } from "./flaws";
 import { lockBump } from "./lock-bump";
 import { buildPlan, impactSignature } from "./plan";
 import { attributeFailure } from "./repair";
@@ -24,7 +24,7 @@ import {
 	saveState,
 	sha256,
 } from "./state";
-import type { IterationState, PlanStep } from "./types";
+import type { FailureClass, IterationState, PlanStep, RepairSpec } from "./types";
 import { SCHEMA_VERSION, SCORECARD_SCHEMA } from "./types";
 import { workspaceSnapshot } from "./workspace";
 
@@ -35,6 +35,27 @@ function option(name: string, argv = process.argv): string | undefined {
 
 function flag(name: string, argv = process.argv): boolean {
 	return argv.includes(name);
+}
+
+function failLedgerMeta(options: {
+	failureClass: FailureClass;
+	repairSpec: RepairSpec;
+	artifacts: Record<string, { path: string; sha256: string }>;
+	step: PlanStep;
+	deleteScaffold?: boolean;
+}) {
+	const evolutionCandidate = evolutionFromRepair(options.repairSpec, { deleteScaffold: options.deleteScaffold });
+	const ledgerStep = { layer: options.step.layer, node: options.step.nodes?.[0] ?? null, backend: options.step.backend };
+	return {
+		evolutionCandidate,
+		flawId: attachFlawId({
+			failureClass: options.failureClass,
+			evolutionCandidate,
+			artifacts: options.artifacts,
+			step: ledgerStep,
+			repairSpec: options.repairSpec,
+		}),
+	};
 }
 
 async function syncState(options?: { passK?: number }): Promise<IterationState> {
@@ -137,6 +158,12 @@ async function runStep(state: IterationState, step: PlanStep, mode: "RUN" | "REP
 			failureClass,
 			artifacts: { htir: htirArtifact, log: logArtifact },
 			scorecard,
+			...failLedgerMeta({
+				failureClass,
+				repairSpec,
+				artifacts: { htir: htirArtifact, log: logArtifact },
+				step,
+			}),
 		});
 		await saveState(state);
 		return state;
@@ -170,9 +197,15 @@ async function runStep(state: IterationState, step: PlanStep, mode: "RUN" | "REP
 			reuseKey: key,
 			step: { layer: step.layer, node: step.nodes?.[0] ?? null, backend: step.backend },
 			failureClass: "ELICITATION_REGRESSION",
-			evolutionCandidate: { operator: repairSpec.operator, deleteScaffold: true },
 			artifacts: { htir: htirArtifact, log: logArtifact },
 			scorecard,
+			...failLedgerMeta({
+				failureClass: "ELICITATION_REGRESSION",
+				repairSpec,
+				artifacts: { htir: htirArtifact, log: logArtifact },
+				step,
+				deleteScaffold: true,
+			}),
 		});
 		await saveState(state);
 		return state;
@@ -187,6 +220,11 @@ async function runStep(state: IterationState, step: PlanStep, mode: "RUN" | "REP
 			heldOutStillPass: !heldOutRegressed(await loadLedger(), key),
 		});
 		if (!decision.accept) {
+			const repairSpec = attributeFailure({
+				failureClass: "CONTRACT_FAIL",
+				message: decision.reasons.join("; "),
+				steps: htir.steps,
+			});
 			state.next_required_action = "REPAIR";
 			state.outcomeClass = "failed";
 			state.scorecard = scorecard;
@@ -195,11 +233,7 @@ async function runStep(state: IterationState, step: PlanStep, mode: "RUN" | "REP
 				stepId: step.id,
 				message: `regression-aware accept rejected: ${decision.reasons.join("; ")}`,
 				htirPath: htirArtifact.path,
-				repairSpec: attributeFailure({
-					failureClass: "CONTRACT_FAIL",
-					message: decision.reasons.join("; "),
-					steps: htir.steps,
-				}),
+				repairSpec,
 			};
 			await appendLedger({
 				kind: "REJECTED_EVOLUTION",
@@ -210,6 +244,12 @@ async function runStep(state: IterationState, step: PlanStep, mode: "RUN" | "REP
 				failureClass: "CONTRACT_FAIL",
 				artifacts: { htir: htirArtifact, log: logArtifact },
 				scorecard,
+				...failLedgerMeta({
+					failureClass: "CONTRACT_FAIL",
+					repairSpec,
+					artifacts: { htir: htirArtifact, log: logArtifact },
+					step,
+				}),
 			});
 			await saveState(state);
 			return state;

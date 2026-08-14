@@ -198,7 +198,7 @@ export interface LedgerRecord {
 	firstFailId?: string | null;
 	artifacts?: Record<string, { path: string; sha256: string }>;
 	scorecard?: RoleScorecard | null;
-	evolutionCandidate?: { operator: string; deleteScaffold?: boolean } | null;
+	evolutionCandidate?: { operator: string; deleteScaffold?: boolean; targetFiles?: string[] } | null;
 	flawId?: string | null;
 	isolatedTrials?: number | null;
 }

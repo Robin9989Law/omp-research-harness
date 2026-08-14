@@ -17,21 +17,34 @@ function loopRegressed(before: RoleLoop, after: RoleLoop): string[] {
 	return reasons;
 }
 
+function recordTime(at: string): number {
+	const ms = Date.parse(at);
+	return Number.isFinite(ms) ? ms : Number.NaN;
+}
+
+function latestIsRegression(record: { kind: string; failureClass?: string | null }): boolean {
+	if (record.kind === "FAIL" || record.kind === "REJECTED_EVOLUTION") return true;
+	return record.kind === "REPLAY" && Boolean(record.failureClass);
+}
+
 export function heldOutRegressed(ledger: LedgerIndex, currentKey: string): boolean {
-	const byKey = new Map<string, Array<{ kind: string; at: string }>>();
+	const byKey = new Map<string, Array<{ kind: string; at: string; failureClass?: string | null }>>();
 	for (const record of ledger.records) {
 		if (record.reuseKey === currentKey) continue;
 		const bucket = byKey.get(record.reuseKey) ?? [];
-		bucket.push({ kind: record.kind, at: record.at });
+		bucket.push({ kind: record.kind, at: record.at, failureClass: record.failureClass });
 		byKey.set(record.reuseKey, bucket);
 	}
 	for (const records of byKey.values()) {
-		const sorted = [...records].sort((left, right) => left.at.localeCompare(right.at));
+		const sorted = [...records].sort((left, right) => {
+			const leftMs = recordTime(left.at);
+			const rightMs = recordTime(right.at);
+			if (Number.isFinite(leftMs) && Number.isFinite(rightMs) && leftMs !== rightMs) return leftMs - rightMs;
+			return left.at.localeCompare(right.at);
+		});
 		const hadPass = sorted.some(record => record.kind === "PASS");
 		const latest = sorted[sorted.length - 1];
-		if (hadPass && latest && (latest.kind === "FAIL" || latest.kind === "REJECTED_EVOLUTION")) {
-			return true;
-		}
+		if (hadPass && latest && latestIsRegression(latest)) return true;
 	}
 	return false;
 }

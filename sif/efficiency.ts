@@ -26,12 +26,15 @@ export interface EfficiencyReport {
 	issue?: string;
 }
 
+export function resolveOutputType(value: unknown): ResearchOutputType {
+	return value === "DOCTORAL_DISSERTATION" ? "DOCTORAL_DISSERTATION" : "JOURNAL_ARTICLE";
+}
+
 export function computeNodePacing(options: {
-	outputType?: ResearchOutputType;
-	loggedStates?: string[];
+	outputType?: unknown;
 	nodeDurationsMs?: Record<string, number>;
 }): NodePacingReport {
-	const outputType = options.outputType ?? "JOURNAL_ARTICLE";
+	const outputType = resolveOutputType(options.outputType);
 	const totalBudgetMs = directionLockBudgetMs(outputType);
 	const nodeBudgets = nodeBudgetTable(outputType);
 	const nodeOverruns: string[] = [];
@@ -90,8 +93,14 @@ export function efficiencyReport(options: {
 		const end = Date.parse(options.endedAt ?? "") || Date.now();
 		if (Number.isFinite(start) && Number.isFinite(end) && end >= start) elapsedMs = end - start;
 	}
-	const pacing = options.outputType || options.nodeDurationsMs
-		? computeNodePacing({ outputType: options.outputType, loggedStates: options.loggedStates, nodeDurationsMs: options.nodeDurationsMs })
+	const dwellDurations = Object.fromEntries(
+		(options.diagnostics?.nodeDwell ?? []).map(item => [item.state, item.ms]),
+	);
+	const pacing = options.outputType || options.nodeDurationsMs || options.diagnostics?.nodeDwell?.length
+		? computeNodePacing({
+			outputType: options.outputType,
+			nodeDurationsMs: options.nodeDurationsMs ?? (Object.keys(dwellDurations).length > 0 ? dwellDurations : undefined),
+		})
 		: undefined;
 	const budget = options.budgetMs ?? pacing?.totalBudgetMs;
 	const overrun = budget != null && elapsedMs != null && elapsedMs > budget;

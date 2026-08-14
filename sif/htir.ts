@@ -141,14 +141,14 @@ export function compileTraceLinks(steps: TraceStep[]): TraceLink[] {
 			}
 		}
 
-		if (current.name === "task" || (current.name === "hub" && (current.op === "wait" || current.op === "jobs"))) {
+		if (current.name === "task") {
 			lastTask = current;
-			if (previous && previous.id !== current.id && previous.name !== current.name) {
+			if (previous && previous.id !== current.id && previous.name !== "task") {
 				addLink({ sourceId: previous.id, targetId: current.id, kind: "control", relation: "delegate" });
 			}
 		}
 
-		if (current.name === "task:subagent:lifecycle" || (current.role && current.role !== "M3" && current.role !== "default")) {
+		if (current.name === "task:subagent:lifecycle") {
 			if (lastTask && lastTask.id !== current.id) {
 				addLink({ sourceId: lastTask.id, targetId: current.id, kind: "control", relation: "delegate" });
 			}
@@ -163,8 +163,6 @@ export function compileTraceLinks(steps: TraceStep[]): TraceLink[] {
 			}
 			if (lastValidate && lastValidate.id !== current.id) {
 				addLink({ sourceId: lastValidate.id, targetId: current.id, kind: "control", relation: "finalize" });
-			} else if (previous && previous.id !== current.id && previous.name !== "iph_advance") {
-				addLink({ sourceId: previous.id, targetId: current.id, kind: "control", relation: "finalize" });
 			}
 			lastAdvance = current;
 			lastPlanOrStatus = undefined;

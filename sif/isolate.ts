@@ -18,11 +18,19 @@ export async function allocateIsolatedRunRoot(label: string): Promise<string> {
 	return path.join(parent, "trial");
 }
 
+function isSifTempParent(parent: string): boolean {
+	const resolved = path.resolve(parent);
+	const tmp = path.resolve(tmpdir());
+	const prefixes = [path.join(tmp, "sif-")];
+	if (tmp.startsWith("/var/")) prefixes.push(path.join(`/private${tmp}`, "sif-"));
+	if (tmp.startsWith("/private/var/")) prefixes.push(path.join(tmp.replace(/^\/private/, ""), "sif-"));
+	return prefixes.some(prefix => resolved.startsWith(prefix));
+}
+
 export async function cleanupIsolatedRunRoot(runRoot: string): Promise<void> {
-	const parent = path.dirname(runRoot);
-	if (parent.includes("sif-") && parent.startsWith(tmpdir())) {
-		await rm(parent, { recursive: true, force: true });
-	}
+	const parent = path.resolve(path.dirname(runRoot));
+	if (!isSifTempParent(parent)) return;
+	await rm(parent, { recursive: true, force: true });
 }
 
 export function l5IsolatedTrials(options: {

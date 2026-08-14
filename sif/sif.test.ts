@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
-import { efficiencyReport, skipAxes } from "./efficiency";
+import { efficiencyFailureClass, efficiencyReport, skipAxes } from "./efficiency";
 import { regressionAwareAccept, heldOutRegressed } from "./accept";
 import { compileHtir, compileTraceLinks } from "./htir";
-import { consolidateFlaws } from "./flaws";
+import { attachFlawId, consolidateFlaws } from "./flaws";
 import { ingestLiveRun } from "./ingest";
 import { classifyTerminal, outcomeReady } from "./outcome";
 import { classifyFiles, globMatch, loadImpactSurfaces } from "./impact";
@@ -704,51 +704,90 @@ describe("lock-bump and certify", () => {
 				},
 			],
 		}, "current")).toBeTrue();
+		expect(heldOutRegressed({
+			schemaVersion: "1.0",
+			records: [
+				{
+					id: "p1",
+					kind: "PASS",
+					at: "2026-08-14T00:00:00.000Z",
+					harnessHead: "h",
+					iphLock: { commit: "b".repeat(40), filesSha: "c".repeat(64) },
+					reuseKey: "other",
+					step: { layer: "L1", backend: "bun-test" },
+				},
+				{
+					id: "f1",
+					kind: "FAIL",
+					at: "2026-08-14T01:00:00.000Z",
+					harnessHead: "h",
+					iphLock: { commit: "b".repeat(40), filesSha: "c".repeat(64) },
+					reuseKey: "other",
+					step: { layer: "L1", backend: "bun-test" },
+					failureClass: "CONTRACT_FAIL",
+				},
+				{
+					id: "p2",
+					kind: "PASS",
+					at: "2026-08-14T02:00:00.000Z",
+					harnessHead: "h",
+					iphLock: { commit: "b".repeat(40), filesSha: "c".repeat(64) },
+					reuseKey: "other",
+					step: { layer: "L1", backend: "bun-test" },
+				},
+			],
+		}, "current")).toBeFalse();
+		expect(heldOutRegressed({
+			schemaVersion: "1.0",
+			records: [
+				{
+					id: "p3",
+					kind: "PASS",
+					at: "2026-08-14T00:00:00.000Z",
+					harnessHead: "h",
+					iphLock: { commit: "b".repeat(40), filesSha: "c".repeat(64) },
+					reuseKey: "other",
+					step: { layer: "L1", backend: "bun-test" },
+				},
+				{
+					id: "r1",
+					kind: "REPLAY",
+					at: "2026-08-14T03:00:00.000Z",
+					harnessHead: "h",
+					iphLock: { commit: "b".repeat(40), filesSha: "c".repeat(64) },
+					reuseKey: "other",
+					step: { layer: "L1", backend: "bun-test" },
+					failureClass: "CONTRACT_FAIL",
+				},
+			],
+		}, "current")).toBeTrue();
 	});
 
-	test("HTIR control-flow links mark retry and data produces", () => {
+	test("HTIR control-flow links mark retry, delegate, and data produces across intermediate steps", () => {
+		const base = {
+			sourceFile: "a.jsonl",
+			status: "message" as const,
+			isLifecycleCompleted: false,
+			isMessageOnly: true,
+			etcLayer: "Verification" as const,
+			anchor: "extensions/iph.ts",
+		};
 		const links = compileTraceLinks([
-			{
-				id: 1,
-				sourceFile: "a.jsonl",
-				role: "M3",
-				status: "message",
-				effect: "read",
-				name: "iph_status",
-				isLifecycleCompleted: false,
-				isMessageOnly: true,
-				etcLayer: "Context",
-				anchor: "extensions/iph.ts",
-			},
-			{
-				id: 2,
-				sourceFile: "a.jsonl",
-				role: "M3",
-				status: "message",
-				effect: "state",
-				name: "iph_advance",
-				targetState: "SCOPE_LOCK",
-				isLifecycleCompleted: false,
-				isMessageOnly: true,
-				etcLayer: "Verification",
-				anchor: "extensions/iph.ts",
-			},
-			{
-				id: 3,
-				sourceFile: "a.jsonl",
-				role: "M3",
-				status: "message",
-				effect: "state",
-				name: "iph_advance",
-				targetState: "SCOPE_LOCK",
-				isLifecycleCompleted: false,
-				isMessageOnly: true,
-				etcLayer: "Verification",
-				anchor: "extensions/iph.ts",
-			},
+			{ ...base, id: 1, role: "M3", effect: "read", name: "iph_status", etcLayer: "Context" },
+			{ ...base, id: 2, role: "M3", effect: "mixed", name: "task", etcLayer: "Execution" },
+			{ ...base, id: 3, role: "frontier", status: "completed", effect: "artifact", name: "task:subagent:lifecycle", isLifecycleCompleted: true, isMessageOnly: false, etcLayer: "Execution", anchor: "agents/frontier-auditor.md" },
+			{ ...base, id: 4, role: "M3", effect: "read", name: "iph_validate" },
+			{ ...base, id: 5, role: "M3", effect: "state", name: "iph_advance", targetState: "SCOPE_LOCK" },
+			{ ...base, id: 6, role: "M3", effect: "state", name: "iph_advance", targetState: "SCOPE_LOCK" },
+			{ ...base, id: 7, role: "M3", effect: "mixed", name: "hub", op: "wait", etcLayer: "Lifecycle" },
+			{ ...base, id: 8, role: "frontier", status: "completed", effect: "artifact", name: "task:subagent:lifecycle", isLifecycleCompleted: true, isMessageOnly: false, etcLayer: "Execution" },
 		]);
-		expect(links.some(link => link.kind === "data" && link.relation === "produces")).toBeTrue();
-		expect(links.some(link => link.kind === "control" && link.relation === "retry")).toBeTrue();
+		expect(links.some(link => link.sourceId === 1 && link.targetId === 5 && link.kind === "data" && link.relation === "produces")).toBeTrue();
+		expect(links.some(link => link.sourceId === 2 && link.targetId === 3 && link.kind === "control" && link.relation === "delegate")).toBeTrue();
+		expect(links.some(link => link.sourceId === 4 && link.targetId === 5 && link.kind === "control" && link.relation === "finalize")).toBeTrue();
+		expect(links.some(link => link.sourceId === 5 && link.targetId === 6 && link.kind === "control" && link.relation === "retry")).toBeTrue();
+		expect(links.some(link => link.sourceId === 1 && link.targetId === 5 && link.relation === "finalize")).toBeFalse();
+		expect(links.some(link => link.sourceId === 7 && link.relation === "delegate")).toBeFalse();
 	});
 
 	test("FAIL records consolidate into HarnessFix-style flaw records", () => {
@@ -784,6 +823,20 @@ describe("lock-bump and certify", () => {
 		expect(flaws).toHaveLength(1);
 		expect(flaws[0]?.count).toBe(2);
 		expect(flaws[0]?.operator).toBe("restore_task_lifecycle");
+		expect(flaws[0]?.anchor).toBe("live-continuous");
+		expect(attachFlawId({
+			failureClass: "CONTRACT_FAIL",
+			evolutionCandidate: { operator: "fix_extension" },
+			artifacts: { htir: { path: "x", sha256: "y" } },
+			step: { layer: "L1", backend: "bun-test" },
+			repairSpec: { anchors: ["extensions/iph.ts"] },
+		})).toBe("CONTRACT_FAIL|fix_extension|extensions/iph.ts");
+		expect(attachFlawId({
+			failureClass: "CONTRACT_FAIL",
+			evolutionCandidate: { operator: "fix_extension" },
+			artifacts: { htir: { path: "x", sha256: "y" } },
+			step: { layer: "L1", backend: "bun-test" },
+		})).toBe("CONTRACT_FAIL|fix_extension|bun-test");
 	});
 });
 
@@ -833,6 +886,17 @@ describe("live ingest", () => {
 		});
 		expect(overrun.overrun).toBeTrue();
 		expect(overrun.issue).toBeUndefined();
+		expect(efficiencyFailureClass(overrun)).toBeUndefined();
+		const paced = efficiencyReport({
+			loggedStates: ["SCOPE_LOCK", "PRIOR_CLAIM_DRAIN"],
+			terminal: true,
+			stopped: true,
+			snapshot: false,
+			outputType: "JOURNAL_ARTICLE",
+			nodeDurationsMs: { PRIOR_CLAIM_DRAIN: 500_000 },
+		});
+		expect(paced.nodePacing?.nodeOverruns.length).toBeGreaterThan(0);
+		expect(efficiencyFailureClass(paced)).toBeUndefined();
 	});
 
 	test("snapshot of an in-progress root does not write a ledger FAIL", async () => {
@@ -911,6 +975,7 @@ describe("SIF isolation", () => {
 		expect(pkg.scripts.iterate).toBe("bun sif/cli.ts iterate");
 		expect(pkg.scripts["iterate:ingest"]).toBe("bun sif/cli.ts ingest");
 		expect(pkg.scripts["iterate:trace"]).toBe("bun sif/cli.ts trace");
+		expect(pkg.scripts["iterate:flaws"]).toBe("bun sif/cli.ts flaws");
 		expect(pkg.scripts.certify).toBe("bun sif/cli.ts certify");
 	});
 });
@@ -1045,20 +1110,27 @@ describe("Codex historical traces", () => {
 	});
 
 	test("node soft SLA pacing allocates journal vs doctoral budgets", async () => {
-		const { computeNodePacing } = await import("./efficiency");
+		const { computeNodePacing, resolveOutputType } = await import("./efficiency");
+		const {
+			JOURNAL_DIRECTION_LOCK_BUDGET_MS,
+			DOCTORAL_DIRECTION_LOCK_BUDGET_MS,
+			JOURNAL_NODE_BUDGET_MS,
+		} = await import("../extensions/iph");
 		const journal = computeNodePacing({
 			outputType: "JOURNAL_ARTICLE",
 			nodeDurationsMs: { PRIOR_CLAIM_DRAIN: 500_000, RECENT_FRONTIER: 100_000 },
 		});
-		expect(journal.totalBudgetMs).toBe(2_700_000);
-		expect(journal.nodeOverruns).toContain("PRIOR_CLAIM_DRAIN (500000ms > 360000ms)");
+		expect(journal.totalBudgetMs).toBe(JOURNAL_DIRECTION_LOCK_BUDGET_MS);
+		expect(journal.nodeOverruns).toContain(`PRIOR_CLAIM_DRAIN (500000ms > ${JOURNAL_NODE_BUDGET_MS.PRIOR_CLAIM_DRAIN}ms)`);
 
 		const doctoral = computeNodePacing({
 			outputType: "DOCTORAL_DISSERTATION",
 			nodeDurationsMs: { PRIOR_CLAIM_DRAIN: 500_000 },
 		});
-		expect(doctoral.totalBudgetMs).toBe(10_800_000);
+		expect(doctoral.totalBudgetMs).toBe(DOCTORAL_DIRECTION_LOCK_BUDGET_MS);
 		expect(doctoral.nodeOverruns).toHaveLength(0);
+		expect(resolveOutputType("not-a-type")).toBe("JOURNAL_ARTICLE");
+		expect(computeNodePacing({ outputType: "bogus" }).totalBudgetMs).toBe(JOURNAL_DIRECTION_LOCK_BUDGET_MS);
 	});
 
 	test("isolated run root allocator creates and cleans up tmp dir", async () => {
@@ -1067,6 +1139,29 @@ describe("Codex historical traces", () => {
 		expect(root).toContain("sif-cleanup-test-");
 		await cleanupIsolatedRunRoot(root);
 		expect(await Bun.file(root).exists()).toBeFalse();
+	});
+
+	test("isolated L5 backend cleans run roots after a failed trial", async () => {
+		const { runBackend } = await import("./backends");
+		const fixture = await mkdtemp(path.join(tmpdir(), "sif-l5-fixture-"));
+		try {
+			const result = await runBackend({
+				id: "L5-real-models",
+				layer: "L5",
+				backend: "real-model-nodes",
+				oracle: "both",
+				realModels: true,
+				passK: 1,
+			}, { realModels: true, env: { SIF_FIXTURE_ROOT: fixture } });
+			expect(result.ok).toBeFalse();
+			expect(result.runRoots?.length).toBe(1);
+			for (const root of result.runRoots ?? []) {
+				expect(await Bun.file(root).exists()).toBeFalse();
+				expect(await Bun.file(path.dirname(root)).exists()).toBeFalse();
+			}
+		} finally {
+			await rm(fixture, { recursive: true, force: true });
+		}
 	});
 });
 

@@ -3,7 +3,7 @@ import type { PlanStep } from "./types";
 import { ablationReport } from "./ablation";
 import { liveDiagnostics } from "./diagnostics";
 import { compileHtir } from "./htir";
-import { allocateIsolatedRunRoot, l5TrialsForStep } from "./isolate";
+import { allocateIsolatedRunRoot, cleanupIsolatedRunRoot, l5TrialsForStep } from "./isolate";
 import { elicitationRegression, scoreHtir } from "./scorecard";
 import { SCORECARD_SCHEMA } from "./types";
 
@@ -69,37 +69,41 @@ async function runIsolatedL5(step: PlanStep, env?: Record<string, string | undef
 	}
 	const passK = step.passK ?? 2;
 	const runRoots: string[] = [];
-	for (let index = 0; index < passK; index += 1) {
-		runRoots.push(await allocateIsolatedRunRoot(`l5-${index}`));
-	}
-	let trials;
 	try {
-		trials = l5TrialsForStep(step, {
-			fixtureRoot,
-			allocateRoot: index => runRoots[index]!,
-		});
-	} catch (error) {
-		return { ok: false, exitCode: 1, output: `sif_backend=L5 ${(error as Error).message}\n` };
-	}
-	let output = `sif_backend=L5 isolated=true passK=${trials.length} runRoots=${runRoots.join(",")}\n`;
-	for (const trial of trials) {
-		const child = Bun.spawn(trial.command, {
-			cwd: PROJECT_ROOT,
-			stdout: "pipe",
-			stderr: "pipe",
-			env: { ...process.env, ...env },
-		});
-		const [stdout, stderr, exitCode] = await Promise.all([
-			new Response(child.stdout).text(),
-			new Response(child.stderr).text(),
-			child.exited,
-		]);
-		output += `trial=${trial.index} runRoot=${trial.runRoot}\n${stdout}${stderr ? `\n[stderr]\n${stderr}` : ""}`;
-		if (exitCode !== 0) {
-			return { ok: false, output, exitCode, isolatedTrials: trial.index, runRoots };
+		for (let index = 0; index < passK; index += 1) {
+			runRoots.push(await allocateIsolatedRunRoot(`l5-${index}`));
 		}
+		let trials;
+		try {
+			trials = l5TrialsForStep(step, {
+				fixtureRoot,
+				allocateRoot: index => runRoots[index]!,
+			});
+		} catch (error) {
+			return { ok: false, exitCode: 1, output: `sif_backend=L5 ${(error as Error).message}\n`, runRoots };
+		}
+		let output = `sif_backend=L5 isolated=true passK=${trials.length} runRoots=${runRoots.join(",")}\n`;
+		for (const trial of trials) {
+			const child = Bun.spawn(trial.command, {
+				cwd: PROJECT_ROOT,
+				stdout: "pipe",
+				stderr: "pipe",
+				env: { ...process.env, ...env },
+			});
+			const [stdout, stderr, exitCode] = await Promise.all([
+				new Response(child.stdout).text(),
+				new Response(child.stderr).text(),
+				child.exited,
+			]);
+			output += `trial=${trial.index} runRoot=${trial.runRoot}\n${stdout}${stderr ? `\n[stderr]\n${stderr}` : ""}`;
+			if (exitCode !== 0) {
+				return { ok: false, output, exitCode, isolatedTrials: trial.index, runRoots };
+			}
+		}
+		return { ok: true, output, exitCode: 0, isolatedTrials: trials.length, runRoots };
+	} finally {
+		await Promise.all(runRoots.map(root => cleanupIsolatedRunRoot(root)));
 	}
-	return { ok: true, output, exitCode: 0, isolatedTrials: trials.length, runRoots };
 }
 
 async function runAblation(traceRoot?: string): Promise<BackendResult> {
