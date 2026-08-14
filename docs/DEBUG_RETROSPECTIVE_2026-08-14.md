@@ -107,10 +107,10 @@ DeepSeek V4 Flash 单次投影约数秒；在 3 个工作任务运行时准确�
 
 `5b91614`、`00464b5`、`636dde2`、`c419602`、`f083995`、`ed67a77`、`6a4a9cd`、`1f7df51`。
 
-### omp-research-harness（19）
+### omp-research-harness（20 个实质提交 + 1 个复盘库存提交）
 
 从 `201303d feat: harden M3-led research workflow` 到
-`c7b8795 test: isolate npm release checks from user cache`，覆盖角色迁移、恢复、工具可见性、完整拓扑、
+`94ec99a docs: record system debug outcomes and event policy`，覆盖角色迁移、恢复、工具可见性、完整拓扑、
 生命周期、Agent-native 合同、证据语义、briefing、事件管理员、输出合同、完整包装载、模型 provenance
 和 hermetic release 检查。
 
