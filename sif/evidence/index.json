@@ -1,0 +1,501 @@
+{
+  "schemaVersion": "1.0",
+  "records": [
+    {
+      "kind": "PASS",
+      "harnessHead": "48d7de574b2311abb1edf51b4383f0c4ee8a01bd",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L0|na|35e531d3070bd0c00aa24f099df42180ec76bd10a2745f886c3904738eb7ff4e|role-scorecard.v1",
+      "step": {
+        "layer": "L0",
+        "node": null,
+        "backend": "typecheck+system-matrix"
+      },
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L0-typecheck+system-matrix.htir.json",
+          "sha256": "124a2123b6c86700e5d0c1e8a36e0eecdddfeea4a26993e3eaadf483bd4a3a3a"
+        },
+        "log": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L0-typecheck+system-matrix.log",
+          "sha256": "1bab174dd3b13bf48a0410b1323cbee5de6f0794c80f55af5ce3e62c4c94ec35"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": false,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 0
+      },
+      "isolatedTrials": null,
+      "id": "e48b3457-4736-4d36-986a-5010f8c93aef",
+      "at": "2026-08-14T23:33:19.265Z"
+    },
+    {
+      "kind": "PASS",
+      "harnessHead": "48d7de574b2311abb1edf51b4383f0c4ee8a01bd",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L1|na|35e531d3070bd0c00aa24f099df42180ec76bd10a2745f886c3904738eb7ff4e|role-scorecard.v1",
+      "step": {
+        "layer": "L1",
+        "node": null,
+        "backend": "bun-test"
+      },
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L1-bun-test.htir.json",
+          "sha256": "124a2123b6c86700e5d0c1e8a36e0eecdddfeea4a26993e3eaadf483bd4a3a3a"
+        },
+        "log": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L1-bun-test.log",
+          "sha256": "63003a81b437f6dae8764f47942c1e60c17fe8415270a3288a2c7f9e056ac581"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": false,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 0
+      },
+      "isolatedTrials": null,
+      "id": "3be19af1-093c-4cea-bbbb-8cd5bc40df7d",
+      "at": "2026-08-14T23:33:27.248Z"
+    },
+    {
+      "kind": "FAIL",
+      "harnessHead": "48d7de574b2311abb1edf51b4383f0c4ee8a01bd",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L2|na|35e531d3070bd0c00aa24f099df42180ec76bd10a2745f886c3904738eb7ff4e|role-scorecard.v1",
+      "step": {
+        "layer": "L2",
+        "node": null,
+        "backend": "omp-e2e"
+      },
+      "failureClass": "CONTRACT_FAIL",
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L2-L3-omp-e2e.htir.json",
+          "sha256": "124a2123b6c86700e5d0c1e8a36e0eecdddfeea4a26993e3eaadf483bd4a3a3a"
+        },
+        "log": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L2-L3-omp-e2e.log",
+          "sha256": "73e658d9f4ab6d9dc5fa3c36778ec3b95ee70e7a27819eb4f004356221dc901a"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": false,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 0
+      },
+      "evolutionCandidate": {
+        "operator": "strengthen_validator_gate",
+        "targetFiles": [
+          "extensions/iph.ts"
+        ]
+      },
+      "flawId": "CONTRACT_FAIL|strengthen_validator_gate|extensions/iph.ts",
+      "id": "fd49becc-c9db-43c0-91ee-35dd227e2726",
+      "at": "2026-08-14T23:33:35.054Z"
+    },
+    {
+      "kind": "PASS",
+      "harnessHead": "48d7de574b2311abb1edf51b4383f0c4ee8a01bd",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L2|na|35e531d3070bd0c00aa24f099df42180ec76bd10a2745f886c3904738eb7ff4e|role-scorecard.v1",
+      "step": {
+        "layer": "L2",
+        "node": null,
+        "backend": "omp-e2e"
+      },
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L2-L3-omp-e2e.htir.json",
+          "sha256": "124a2123b6c86700e5d0c1e8a36e0eecdddfeea4a26993e3eaadf483bd4a3a3a"
+        },
+        "log": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L2-L3-omp-e2e.log",
+          "sha256": "47eec98ba61eb75a9549f969df828b4a5c433dddd70a53968fd7163c02ed521c"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": false,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 0
+      },
+      "isolatedTrials": null,
+      "firstFailId": "fd49becc-c9db-43c0-91ee-35dd227e2726",
+      "id": "7bd0b63c-9ea1-453e-b91d-5f0fb13d7606",
+      "at": "2026-08-14T23:39:11.521Z"
+    },
+    {
+      "kind": "PASS",
+      "harnessHead": "48d7de574b2311abb1edf51b4383f0c4ee8a01bd",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L4|na|35e531d3070bd0c00aa24f099df42180ec76bd10a2745f886c3904738eb7ff4e|role-scorecard.v1",
+      "step": {
+        "layer": "L4",
+        "node": null,
+        "backend": "install+package-check"
+      },
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L4-install+package-check.htir.json",
+          "sha256": "124a2123b6c86700e5d0c1e8a36e0eecdddfeea4a26993e3eaadf483bd4a3a3a"
+        },
+        "log": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L4-install+package-check.log",
+          "sha256": "225472e0e0c97a5ed26277b2f528c998be6128bc3775892f1b6b64810aef4316"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": false,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 0
+      },
+      "isolatedTrials": null,
+      "id": "d62fff90-10a3-4a82-9325-3703bf8fc480",
+      "at": "2026-08-14T23:39:38.373Z"
+    },
+    {
+      "kind": "PASS",
+      "harnessHead": "48d7de574b2311abb1edf51b4383f0c4ee8a01bd",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L5|3|35e531d3070bd0c00aa24f099df42180ec76bd10a2745f886c3904738eb7ff4e|role-scorecard.v1",
+      "step": {
+        "layer": "L5",
+        "node": 3,
+        "backend": "real-model-nodes"
+      },
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L5-real-models.htir.json",
+          "sha256": "124a2123b6c86700e5d0c1e8a36e0eecdddfeea4a26993e3eaadf483bd4a3a3a"
+        },
+        "log": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L5-real-models.log",
+          "sha256": "ac5852b99bedc9c1bacc8e5f949d9991d39a3f167431f9949729dc63672f64ae"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": false,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 0
+      },
+      "isolatedTrials": null,
+      "id": "c1a36e0a-f440-46c9-8829-96d813bd4bb4",
+      "at": "2026-08-14T23:39:43.079Z"
+    },
+    {
+      "kind": "PASS",
+      "harnessHead": "48d7de574b2311abb1edf51b4383f0c4ee8a01bd",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L6|3|35e531d3070bd0c00aa24f099df42180ec76bd10a2745f886c3904738eb7ff4e|role-scorecard.v1",
+      "step": {
+        "layer": "L6",
+        "node": 3,
+        "backend": "scaffold-ablation"
+      },
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L6-ablation.htir.json",
+          "sha256": "124a2123b6c86700e5d0c1e8a36e0eecdddfeea4a26993e3eaadf483bd4a3a3a"
+        },
+        "log": {
+          "path": "sif/evidence/runs/8d803643-68ba-4784-8ecf-38ad35d06a42/L6-ablation.log",
+          "sha256": "6b24f2cd69910a114072cd865913d4f71c2e2d6700b4599061dd3652f83713d2"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": false,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 0
+      },
+      "isolatedTrials": null,
+      "id": "744e4d71-a64f-4b88-92bd-5b1cc2430990",
+      "at": "2026-08-14T23:39:43.748Z"
+    },
+    {
+      "kind": "FAIL",
+      "harnessHead": "54b7a230dcabe5ab20435bfa916d587f171f9f21",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L5|na|3b2744eb8dfd48e1ea208b25d32def164864e5431ff202fc35858330f9f17883|role-scorecard.v1",
+      "step": {
+        "layer": "L5",
+        "node": null,
+        "backend": "live-continuous"
+      },
+      "failureClass": "CONTRACT_FAIL",
+      "evolutionCandidate": {
+        "operator": "strengthen_validator_gate",
+        "deleteScaffold": false,
+        "targetFiles": [
+          "agents/frontier-auditor.md",
+          "extensions/iph.ts"
+        ]
+      },
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/74efaf06-5c31-47f3-a22c-7ecaddd04084/live.htir.json",
+          "sha256": "087624559184e4d13374e623c56630127faa95687173460162735308bcadec63"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": true,
+            "optimizedTask": false,
+            "finishedEfficiently": true
+          },
+          {
+            "role": "frontier",
+            "foundProblem": true,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          },
+          {
+            "role": "layer",
+            "foundProblem": true,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          },
+          {
+            "role": "atomic",
+            "foundProblem": true,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          },
+          {
+            "role": "collision",
+            "foundProblem": true,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 42
+      },
+      "flawId": "CONTRACT_FAIL|strengthen_validator_gate|agents/frontier-auditor.md",
+      "id": "300b73e2-a821-4e6d-bc43-7e60c4969ed3",
+      "at": "2026-08-14T23:54:34.550Z"
+    },
+    {
+      "kind": "FAIL",
+      "harnessHead": "54b7a230dcabe5ab20435bfa916d587f171f9f21",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L0|na|f3358ee92bcd3d4737db81c225eed2af713b6f942cba927cc0e212f2d19fab0c|role-scorecard.v1",
+      "step": {
+        "layer": "L0",
+        "node": null,
+        "backend": "typecheck+system-matrix"
+      },
+      "failureClass": "CONTRACT_FAIL",
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/73b1817a-3017-470e-a599-b15be6e083c6/L0-typecheck+system-matrix.htir.json",
+          "sha256": "124a2123b6c86700e5d0c1e8a36e0eecdddfeea4a26993e3eaadf483bd4a3a3a"
+        },
+        "log": {
+          "path": "sif/evidence/runs/73b1817a-3017-470e-a599-b15be6e083c6/L0-typecheck+system-matrix.log",
+          "sha256": "c96f47892d34af99aa5665ca9b21af578d9f7b04c68891d021faae77e709361e"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": false,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 0
+      },
+      "evolutionCandidate": {
+        "operator": "strengthen_validator_gate",
+        "targetFiles": [
+          "extensions/iph.ts"
+        ]
+      },
+      "flawId": "CONTRACT_FAIL|strengthen_validator_gate|extensions/iph.ts",
+      "id": "5513c680-5e56-47fe-9463-4833a64cf13a",
+      "at": "2026-08-14T23:57:18.262Z"
+    },
+    {
+      "kind": "PASS",
+      "harnessHead": "54b7a230dcabe5ab20435bfa916d587f171f9f21",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L0|na|f3358ee92bcd3d4737db81c225eed2af713b6f942cba927cc0e212f2d19fab0c|role-scorecard.v1",
+      "step": {
+        "layer": "L0",
+        "node": null,
+        "backend": "typecheck+system-matrix"
+      },
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/893591ff-dbb7-4e1d-9ade-22dc537712ee/L0-typecheck+system-matrix.htir.json",
+          "sha256": "124a2123b6c86700e5d0c1e8a36e0eecdddfeea4a26993e3eaadf483bd4a3a3a"
+        },
+        "log": {
+          "path": "sif/evidence/runs/893591ff-dbb7-4e1d-9ade-22dc537712ee/L0-typecheck+system-matrix.log",
+          "sha256": "1bab174dd3b13bf48a0410b1323cbee5de6f0794c80f55af5ce3e62c4c94ec35"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": false,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 0
+      },
+      "isolatedTrials": null,
+      "firstFailId": "5513c680-5e56-47fe-9463-4833a64cf13a",
+      "id": "fadc6d05-16fd-485d-86d1-c1f1f7eb0353",
+      "at": "2026-08-14T23:57:50.348Z"
+    },
+    {
+      "kind": "PASS",
+      "harnessHead": "54b7a230dcabe5ab20435bfa916d587f171f9f21",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L1|na|f3358ee92bcd3d4737db81c225eed2af713b6f942cba927cc0e212f2d19fab0c|role-scorecard.v1",
+      "step": {
+        "layer": "L1",
+        "node": null,
+        "backend": "bun-test"
+      },
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/893591ff-dbb7-4e1d-9ade-22dc537712ee/L1-bun-test.htir.json",
+          "sha256": "124a2123b6c86700e5d0c1e8a36e0eecdddfeea4a26993e3eaadf483bd4a3a3a"
+        },
+        "log": {
+          "path": "sif/evidence/runs/893591ff-dbb7-4e1d-9ade-22dc537712ee/L1-bun-test.log",
+          "sha256": "c3a24a97ef423b42c6c44939da376d6329eb9eacbb985b404cf6ea7380690122"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": false,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 0
+      },
+      "isolatedTrials": null,
+      "id": "dc1893e4-2fd1-4f5c-8824-ff0a6584594d",
+      "at": "2026-08-14T23:58:32.791Z"
+    }
+  ]
+}

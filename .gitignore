@@ -1,4 +1,7 @@
 node_modules/
 .DS_Store
 *.log
+sif/iteration_state.json
+sif/evidence/runs/
+sif/evidence/probes/
 

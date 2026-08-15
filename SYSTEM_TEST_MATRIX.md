@@ -72,24 +72,45 @@
 
 ## 4. 分层测试顺序
 
+系统更新由仓内隔离的 **SIF**（`sif/`，不进 npm 插件包）编排。现有 `bun run check`、
+`test:omp`、`test:nodes`、`test:models` 是后端，不是入口。SIF 是评测/进化 harness；
+IPH 研究会话中的运行时 harness 冻结，禁止在科研会话内进化脚手架。
+
+```text
+bun run iterate              # 按变更影响面跑下一步，首错即停
+bun run iterate:status
+bun run iterate:replay
+bun run iterate:ingest -- --research-root <research-root>   # 连续 live-run 收口；进行中加 --snapshot
+bun run iterate:lock-bump -- --commit <sha>
+bun run certify              # 结果门 + 过程门；不 push / 不 publish
+```
+
 每次升级固定按以下顺序执行，首错即停，不清锁重试：
 
 ```text
 L0 静态：typecheck + topology audit + doc/version scan
-L1 单元：bun test + Python unittest/pytest
+L1 单元：bun test + IPH pytest（`IPH_SKILL_DIR` 未设则延期 pytest）
 L2 组件：真实 OMP loader/tool/hook E2E
-L3 恢复：STOP/BLOCKED/rollback 故障注入
+L3 恢复：STOP/BLOCKED/rollback 故障注入（SIF `recovery-inject`，不与 L2 共用）
 L4 部署：install transaction + package contents + plugin doctor
 L5 真实模型：M3 可跨节点做全局推理，但每回合只提交一个合同事务；指定 specialist 独立复核
-L6 能力激发：对步骤脚本/目标不变量、原始上下文/状态投影、权威专家/对抗同伴做 scaffold 消融
+L6 能力激发：H0–H3 梯子 + HarnessFix 四消融（prompt-only / 无轨迹 / 自由编辑 / 无回归门）；比较时固定信息预算
 ```
+
+结果门看最终 `workflow_state` 与 Python validator；过程门从 HTIR 提取发现问题→优化任务→高效完成。
+边走通但无主动闭环证据是 `unverified_success`，不能 `certify`。日常 iterate 为 pass@1；
+certify 对受影响真实节点要求 pass^k（k=2 次**独立隔离**试次，各用新 `--run-root`），**或**一场连续 live-run 的 `live-continuous` PASS。
+`test:models` 仍是隔离单边；iterate 的 L5 不得把 `PROJECT_ROOT` 当研究根，必须设 `SIF_FIXTURE_ROOT`。连续立题会话停稳后用 `iterate:ingest` 收口，不要对着正在跑的
+`debug:omp` 开 validator。失败产出范围化 repair operator，禁止用更细步骤脚本换绿灯。
 
 源码真实模型测试必须通过 `npm run debug:omp -- ...` 启动。该入口同时传
 `--plugin-dir <root>`（agents/resources）和 `--extension <root>/extensions/iph.ts`（工具/hooks）。
 不得只用其中一个，也不得传 `--no-extensions`；半装载的失败不代表发布包行为。
 
 M3 每一步先 `iph_status`、再 `iph_transition_plan`；可以分析全局路径、质疑计划和比较信息价值，
-但一次只能提交计划中的一个 target。
+但一次只能提交计划中的一个 target。立题会话在 READY 后继续下一条相邻边，直到
+`DIRECTION_LOCK`、诚实 N0-1/N0-2、STOP 或 BLOCKED。期刊目标 45 分钟、博士 3 小时是到
+`DIRECTION_LOCK` 的软 SLA，不含 COMPUTE。
 同一 state hash + 同一失败码不得第二次调用 validate/clear-lock。失败时保存 session、
 state hash、STOP lock、validation log 和工具调用序列，回到对应层修复后再重放。
 

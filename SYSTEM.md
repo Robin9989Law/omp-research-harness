@@ -45,9 +45,17 @@ claim bundle）、换轨（中途换路径/形式/贡献）。被驳回则执行
   未设置时只允许从标准用户技能目录解析。checkout 必须通过随插件固定的 commit/文件
   SHA-256 lock；找不到或不匹配即 BLOCKED，禁止内联、复制或静默升级 validator。
 - 引导模式确认成果类型与稳定 workflow ID 后 MUST 调用 `iph_bootstrap`；该工具只创建
-  BOOT state 与 lifecycle pointer，不推进、不选路径。
+  BOOT state、lifecycle pointer 与 `harness_run.json` 时钟，不推进、不选路径。
+- 立题会话的默认完成点是 `DIRECTION_LOCK`（或诚实 N0-1/N0-2）。一次用户请求 MUST
+  连续提交相邻边直到该点、STOP 或 BLOCKED；每次 `iph_advance` 仍只走一条边。READY
+  后立即再读 `iph_transition_plan`，不得因为“当前节点已完成”而 yield。
+- 期刊目标墙钟 45 分钟、博士 3 小时，计时到 `DIRECTION_LOCK`，不含 COMPUTE。时钟在
+  `harness_run.json`；overrun 只警告，禁止跳轴、批量登记旧文献或伪造 N0-4C。
+- 期刊证据劳动：`ONE_MAIN_M`，K 集 3–8，碰撞一轮，旧项目书目只作发现线索。博士：
+  `THREE_ORGANIC_A_B_C`，K 与近邻按三条贡献展开。两边都要做身份核验、七轴、引用图、
+  L1→L2→L3 与独立 V3。
 - state 存在后所有推进 MUST 调用 `iph_*` 工具；禁止直接 edit/write/bash 改
-  `workflow_state.json`、gate、decision_log 或 validation.log。
+  `workflow_state.json`、`harness_run.json`、gate、decision_log 或 validation.log。
 - `iph_advance` MUST 在一次调用中分别提供顶层路径指针 `stateArtifacts`、不可变文件
   哈希输入 `artifacts`、gate 和推进后的 `nextAction`；哈希登记不能替代路径指针。
 - 旧版推进若仅因缺顶层路径进入 STOP，MUST 用 `iph_clear_lock` 的
@@ -75,7 +83,9 @@ epoch 文件，事后改动即 REVIEW_ARTIFACT_TAMPERED。
 specialist 委派 MUST 使用最小 `task` 调用：只传 `context` 与 `tasks[]` 中的 `name`、
 `agent`、`task`。MUST NOT 为上述 specialist 自造或传入 `outputSchema` / `schemaMode`；
 它们直接写 transition contract 指定的工件。等待任务完成后，把返回的精确 agent ID
-作为 `specialistAgentId` 传给 `iph_advance`。
+作为 `specialistAgentId` 传给 `iph_advance`。未绑定、过期或续跑后丢失 target 的
+完成身份 MUST NOT 复用；必须新派一个同角色 specialist。MUST NOT 用 bash/grep/read
+翻 `.harness-sessions` 或 session jsonl 来“找回”身份；只读 `iph_event_snapshot`。
 
 `iph_status`、`iph_transition_plan`、`iph_validate`、`iph_advance` 等均为直接注册的工具。
 MUST 按原名直接调用；MUST NOT 编造 `ipc_call`、MCP wrapper 或 shell wrapper。工具清单
@@ -143,7 +153,9 @@ E6 收尾/投稿：成稿核对 + 投稿。
 
 # 立题（E2/E3）执行纪律
 - 一次只推进一个 `active_state`；仅从 `next_required_action` 恢复，不得重选路径。
-- 每轮 MUST 先调用 `iph_transition_plan` 获取目标状态、必需工件、路径指针、冻结哈希和 specialist 合同；不得由主模型猜测。
+- 同一会话连续推进到 `DIRECTION_LOCK` 或诚实负终态；不要把“一条边”理解成“整次请求结束”。
+- 每轮 MUST 先调用 `iph_transition_plan` 获取目标状态、必需工件、路径指针、冻结哈希、
+  specialist 合同、节点时间盒和证据劳动量；不得由主模型猜测。
 - 续跑先调用只读 `iph_status`；它不等于 validator。需要门禁结论时仍必须直接调用 `iph_validate`。
 - 推进顺序：先落盘产物 → `iph_validate` → READY 后由 `iph_advance` 原子登记
   路径/哈希、更新门禁和下一动作并推进。
@@ -151,7 +163,12 @@ E6 收尾/投稿：成稿核对 + 投稿。
 - decision_log 已登记 SHA-256 的工件不可原地修改；需要实质变化时创建版本化替代物并通过新状态/epoch 登记。
 - `iph_validate` 非零 → STOP：保留产物、记录唯一恢复动作，不得宣布 READY/LOCKED/CLOSED。
 - 证据深度按层供给：L1 零全文、L2 摘要级、L3 只对 K 集合全重，超层即 INVALID。
+  进入 `RECENT_FRONTIER` / `LITERATURE_REGISTER` 时 `literature_claim_registry.json`
+  的 `records` 必须为空。K 集合归档必须是 PDF 或全文 HTML，出版商落地页 / ACL
+  Anthology 壳页 / arXiv `/abs` 不算全文，也不得因此提交 BLOCKED_CAPABILITY。
+- 可变路径指针走 `stateArtifacts`，不得放进 `artifacts` 冻结哈希。
 - 状态推进只走 `iph_advance`，禁止手改 `workflow_state.json`。
+- specialist 只读 briefing 给出的最小文件与权威章节；禁止全仓库 find，禁止把只读旧根中的 URL 批量登记为近邻。
 
 § 门禁
 ```text

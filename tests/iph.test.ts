@@ -9,17 +9,32 @@ import {
 	classifyComputeCommand,
 	clearRuntimeRegistryForTests,
 	createBootState,
+	createHarnessRun,
+	DEADLINE_STATE,
+	DOCTORAL_DIRECTION_LOCK_BUDGET_MS,
+	evidenceLaborForOutput,
 	EXIT_STATUS,
 	executableText,
+	dropFrozenPointerArtifacts,
+	frozenPointerIssue,
 	eventFlowSnapshot,
 	findResearchRoot,
+	inspectHarnessRun,
 	inspectStopLock,
 	inspectSpecialistCompletion,
+	JOURNAL_DIRECTION_LOCK_BUDGET_MS,
+	JOURNAL_NODE_BUDGET_MS,
+	kFulltextArchiveIssue,
+	l1ClaimRegistryIssue,
+	archivedSourceLooksLikeArticle,
 	mutableArtifactConflicts,
 	nodeBriefing,
+	nodeBudgetTable,
 	isSanctionedReviewerTask,
 	liveReviewerIdentity,
 	recordSubagentLifecycle,
+	sessionForensicsIssue,
+	SPECIALIST_RUNTIME_FILE,
 	N0_REQUIRED_NEXT_ACTIONS,
 	POSITIVE_STATE_SEQUENCE,
 	requiredNextAction,
@@ -103,6 +118,9 @@ describe("M3 control-plane routing", () => {
 		expect(briefing.readBeforeAct).toContain("/authoritative/iph/evidence-pipeline.md");
 		expect(briefing.readBeforeAct).not.toContain("compute_evidence.json");
 		expect(briefing.readScope).toContain("not a ceiling");
+		expect(briefing.readScope).toContain("Do not run find/bash inventory");
+		expect(briefing.authoritySections.join(" ")).toContain("R-FRONTIER-11");
+		expect(briefing.evidenceLabor?.kSetMax).toBeUndefined();
 		expect(briefing.examples.valid).toContain("NOT_QUALIFIED");
 		expect(briefing.examples.invalid).toContain("atomic/full-text claim");
 		expect(briefing.completionProof.join(" ")).toContain("formally completed");
@@ -443,6 +461,123 @@ describe("M3 control-plane routing", () => {
 			["near_neighbor_registry.json", "scope_lock.md"],
 			["literature_registry=near_neighbor_registry.json", "scope_lock=scope_lock.md"],
 		)).toEqual(["literature_registry=near_neighbor_registry.json"]);
+		expect(dropFrozenPointerArtifacts(
+			["near_neighbor_registry.json", "literature_claim_registry.json", "scope_lock.md"],
+			[
+				"literature_registry=near_neighbor_registry.json",
+				"claim_registry=literature_claim_registry.json",
+				"frontier_coverage=frontier_coverage.json",
+			],
+		)).toEqual({
+			artifacts: ["scope_lock.md"],
+			dropped: ["near_neighbor_registry.json", "literature_claim_registry.json"],
+		});
+		expect(dropFrozenPointerArtifacts(
+			["l1-card.md"],
+			["l1_card=l1-card.md"],
+		)).toEqual({
+			artifacts: ["l1-card.md"],
+			dropped: [],
+		});
+		expect(frozenPointerIssue(
+			["near_neighbor_registry.json"],
+			["literature_registry=near_neighbor_registry.json"],
+		)).toContain("must not be frozen");
+		expect(frozenPointerIssue(
+			["scope_lock.md"],
+			["scope_lock=scope_lock.md"],
+		)).toBeUndefined();
+	});
+
+	test("persists specialist bindings across process-local registry clears", async () => {
+		clearRuntimeRegistryForTests();
+		const root = await mkdtemp(path.join(tmpdir(), "iph-specialist-persist-"));
+		try {
+			await writeFile(path.join(root, "workflow_state.json"), "{}\n");
+			const sessionFile = path.join(root, ".harness-sessions", "FrontierPersist.jsonl");
+			await mkdir(path.dirname(sessionFile), { recursive: true });
+			recordSubagentLifecycle({
+				id: "FrontierPersist",
+				agent: "frontier-auditor",
+				status: "completed",
+				sessionFile,
+			}, { researchRoot: root, target: "RECENT_FRONTIER", agents: new Set(["frontier-auditor"]) });
+			expect(await Bun.file(path.join(root, SPECIALIST_RUNTIME_FILE)).exists()).toBeTrue();
+			clearRuntimeRegistryForTests();
+			expect(inspectSpecialistCompletion(
+				"FrontierPersist", "frontier-auditor", root, "RECENT_FRONTIER",
+			).completed).toBeTrue();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+			clearRuntimeRegistryForTests();
+		}
+	});
+
+	test("refuses unbound completed specialists and forbids session forensics", () => {
+		clearRuntimeRegistryForTests();
+		recordSubagentLifecycle({
+			id: "FrontierUnbound",
+			agent: "frontier-auditor",
+			status: "completed",
+			sessionFile: "/tmp/frontier-unbound.jsonl",
+		});
+		const inspection = inspectSpecialistCompletion(
+			"FrontierUnbound", "frontier-auditor", "/tmp/research-unbound", "RECENT_FRONTIER",
+		);
+		expect(inspection.status).toBe("binding_mismatch");
+		expect(inspection.diagnosis).toContain("Dispatch a NEW frontier-auditor");
+		expect(inspection.diagnosis).toContain(".harness-sessions");
+		const snapshot = eventFlowSnapshot("/tmp/research-unbound", "RECENT_FRONTIER", "frontier-auditor");
+		expect(snapshot.recommendation).toBe("DISPATCH_REQUIRED");
+		expect(snapshot.recovery).toContain("Dispatch a NEW frontier-auditor");
+		expect(sessionForensicsIssue("bash", {}, "rg specialistAgentId .harness-sessions")).toContain("iph_event_snapshot");
+		expect(sessionForensicsIssue("read", { path: "/tmp/root/.harness-sessions/parent.jsonl" })).toContain("NEW specialist");
+		expect(sessionForensicsIssue("bash", {}, "ls")).toBeUndefined();
+	});
+
+	test("rejects L1 atomic claim records before entering the frontier gates", async () => {
+		const root = await mkdtemp(path.join(tmpdir(), "iph-l1-claims-"));
+		try {
+			await writeFile(path.join(root, "literature_claim_registry.json"), JSON.stringify({
+				schema_version: "2.0",
+				records: [{ claim_id: "LC-0001" }],
+			}));
+			expect(await l1ClaimRegistryIssue(root, "RECENT_FRONTIER")).toContain("budget=0");
+			expect(await l1ClaimRegistryIssue(root, "L1_FREEZE")).toBeUndefined();
+			await writeFile(path.join(root, "literature_claim_registry.json"), JSON.stringify({
+				schema_version: "2.0",
+				records: [],
+			}));
+			expect(await l1ClaimRegistryIssue(root, "RECENT_FRONTIER")).toBeUndefined();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("rejects publisher landing pages as K-set full text", async () => {
+		expect(archivedSourceLooksLikeArticle(Buffer.from("%PDF-1.4\n"), "W-0001.pdf")).toBeTrue();
+		expect(archivedSourceLooksLikeArticle(
+			Buffer.from("<html><title>On Measuring Faithfulness - ACL Anthology</title><p>abstract</p></html>"),
+			"W-0001.html",
+		)).toBeFalse();
+		const root = await mkdtemp(path.join(tmpdir(), "iph-k-fulltext-"));
+		try {
+			await mkdir(path.join(root, "literature_archive"));
+			await writeFile(path.join(root, "current_evidence_scope.json"), JSON.stringify({
+				schema_version: "2.0",
+				fulltext_registry_ids: ["W-0001"],
+				atomic_claim_ids: [],
+			}));
+			await writeFile(
+				path.join(root, "literature_archive", "W-0001.html"),
+				"<html><title>Paper - ACL Anthology</title><meta name='citation_abstract' content='x'></html>\n",
+			);
+			expect(await kFulltextArchiveIssue(root, "K_CLAIM_REGISTER")).toContain("landing/abstract");
+			await writeFile(path.join(root, "literature_archive", "W-0001.pdf"), "%PDF-1.4\n% article\n");
+			expect(await kFulltextArchiveIssue(root, "K_CLAIM_REGISTER")).toBeUndefined();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 
 	test("removes caller schemas only from scientific specialist tasks", () => {
@@ -506,6 +641,53 @@ describe("BOOT state", () => {
 			currentYear: 2026,
 		});
 		expect(state.contribution_contract).toBe("THREE_ORGANIC_A_B_C");
+	});
+});
+
+describe("direction-lock pacing clock", () => {
+	test("journal and doctoral budgets are 45 minutes and 3 hours and cover every E2/E3 source state", () => {
+		expect(JOURNAL_DIRECTION_LOCK_BUDGET_MS).toBe(45 * 60 * 1000);
+		expect(DOCTORAL_DIRECTION_LOCK_BUDGET_MS).toBe(180 * 60 * 1000);
+		expect(DEADLINE_STATE).toBe("DIRECTION_LOCK");
+		const journalSum = Object.values(JOURNAL_NODE_BUDGET_MS).reduce((total, value) => total + value, 0);
+		expect(journalSum).toBe(JOURNAL_DIRECTION_LOCK_BUDGET_MS);
+		expect(Object.keys(JOURNAL_NODE_BUDGET_MS).sort()).toEqual(POSITIVE_STATE_SEQUENCE.slice(0, POSITIVE_STATE_SEQUENCE.indexOf("DIRECTION_LOCK")).slice().sort());
+		const doctoral = nodeBudgetTable("DOCTORAL_DISSERTATION");
+		expect(Object.values(doctoral).reduce((total, value) => total + value, 0)).toBe(DOCTORAL_DIRECTION_LOCK_BUDGET_MS);
+		expect(doctoral.INDEPENDENT_REVIEW).toBe(210_000 * 4);
+	});
+
+	test("journal labor is one M claim with K 3-8; doctoral expands A/B/C", () => {
+		expect(evidenceLaborForOutput("JOURNAL_ARTICLE")).toMatchObject({
+			contributionContract: "ONE_MAIN_M",
+			kSetMin: 3,
+			kSetMax: 8,
+			collisionRounds: 1,
+		});
+		expect(evidenceLaborForOutput("DOCTORAL_DISSERTATION")).toMatchObject({
+			contributionContract: "THREE_ORGANIC_A_B_C",
+			kSetMin: 6,
+			kSetMax: 24,
+			collisionRounds: 3,
+		});
+		expect(evidenceLaborForOutput("JOURNAL_ARTICLE").neighborPolicy).toContain("never bulk-register");
+	});
+
+	test("inspectHarnessRun reports remaining time and overrun without changing research state", () => {
+		const startedAt = "2026-08-14T00:00:00.000Z";
+		const run = createHarnessRun({ outputType: "JOURNAL_ARTICLE", startedAt });
+		const start = Date.parse(startedAt);
+		const inside = inspectHarnessRun(run, { nowMs: start + 10 * 60 * 1000, activeState: "RECENT_FRONTIER" });
+		expect(inside.ok).toBeTrue();
+		expect(inside.snapshot?.elapsedMs).toBe(10 * 60 * 1000);
+		expect(inside.snapshot?.remainingMs).toBe(JOURNAL_DIRECTION_LOCK_BUDGET_MS - 10 * 60 * 1000);
+		expect(inside.snapshot?.budgetOverrun).toBeFalse();
+		expect(inside.snapshot?.nodeBudgetMs).toBe(360_000);
+		expect(inside.snapshot?.continuousRun).toContain("DIRECTION_LOCK");
+		const overrun = inspectHarnessRun(run, { nowMs: start + JOURNAL_DIRECTION_LOCK_BUDGET_MS + 1, activeState: "L2_TRIAGE" });
+		expect(overrun.snapshot?.budgetOverrun).toBeTrue();
+		expect(overrun.snapshot?.remainingMs).toBe(-1);
+		expect(inspectHarnessRun({ schema_version: "1.0" }).ok).toBeFalse();
 	});
 });
 

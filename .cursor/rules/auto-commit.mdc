@@ -1,0 +1,12 @@
+---
+description: 每次改完自动 git commit，不要再问
+alwaysApply: true
+---
+
+# 自动提交
+
+完成一批可运行的改动后立刻 `git commit`，不要先问。
+
+- 只提交本次相关的 harness 文件；不要提交 `.env`、credentials、`sif/iteration_state.json`、探针产物
+- 提交说明写原因（1–2 句），用 HEREDOC；不要 `--no-verify`、不要 amend 已推送提交
+- 没有文件变更时不要空提交

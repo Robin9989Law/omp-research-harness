@@ -46,6 +46,7 @@ try {
 	assert(existsSync(path.join(packageRoot, "extensions", "iph.ts")), "tarball omitted the OMP extension");
 	assert(existsSync(path.join(packageRoot, "scripts", "install-user-config.sh")), "tarball omitted the installer");
 	assert(!existsSync(path.join(packageRoot, "tests")), "tarball unexpectedly contains development tests");
+	assert(!existsSync(path.join(packageRoot, "sif")), "tarball must not ship the SIF evaluation harness");
 
 	const loaded = await loadExtensions(
 		[path.join(packageRoot, "extensions", "iph.ts")],

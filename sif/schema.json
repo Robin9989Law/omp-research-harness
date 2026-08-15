@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Robin9989Law/omp-research-harness/sif/schema.json",
+  "title": "System iteration state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "harnessHead",
+    "workingTreeDirty",
+    "iphLock",
+    "delta",
+    "planId",
+    "plan",
+    "currentStepIndex",
+    "next_required_action",
+    "outcomeClass",
+    "executedKeys",
+    "scorecardSchema"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "scorecardSchema": { "const": "role-scorecard.v1" },
+    "harnessHead": { "type": "string", "minLength": 1 },
+    "workingTreeDirty": { "type": "boolean" },
+    "iphLock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "filesSha"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "filesSha": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "classes", "signature"],
+      "properties": {
+        "files": { "type": "array", "items": { "type": "string" } },
+        "classes": {
+          "type": "array",
+          "items": {
+            "enum": ["control-plane", "prompt", "validator", "install", "topology", "sif", "unknown"]
+          }
+        },
+        "signature": { "type": "string", "minLength": 1 },
+        "unknownFiles": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "planId": { "type": "string", "minLength": 1 },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps"],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/step" }
+        }
+      }
+    },
+    "currentStepIndex": { "type": "integer", "minimum": 0 },
+    "next_required_action": {
+      "enum": ["RUN_STEP", "REPAIR", "REPLAY", "CERTIFY", "DONE"]
+    },
+    "outcomeClass": {
+      "type": ["string", "null"],
+      "enum": ["autonomous_verified_success", "assisted_verified_success", "unverified_success", "failed", "unsafe_invalid", null]
+    },
+    "stop": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["failureClass", "stepId", "message", "repairSpec"],
+      "properties": {
+        "failureClass": {
+          "enum": ["CONTRACT_FAIL", "EFFICIENCY_REGRESSION", "ELICITATION_REGRESSION"]
+        },
+        "stepId": { "type": "string" },
+        "message": { "type": "string" },
+        "htirPath": { "type": ["string", "null"] },
+        "repairSpec": { "$ref": "#/$defs/repairSpec" }
+      }
+    },
+    "scorecard": { "type": ["object", "null"] },
+    "runId": { "type": ["string", "null"] },
+    "executedKeys": { "type": "array", "items": { "type": "string" } },
+    "passK": { "type": "integer", "minimum": 1, "default": 1 },
+    "deferred": {
+      "type": "array",
+      "items": { "enum": ["L5", "L6"] }
+    }
+  },
+  "$defs": {
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "layer", "backend", "oracle"],
+      "properties": {
+        "id": { "type": "string" },
+        "layer": { "enum": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"] },
+        "backend": { "type": "string" },
+        "oracle": { "enum": ["outcome", "process", "both"] },
+        "nodes": { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 22 } },
+        "failures": { "type": "array", "items": { "type": "string" } },
+        "ablation": { "type": "boolean" },
+        "realModels": { "type": "boolean" },
+        "passK": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "repairSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operator", "layer", "anchors", "regressionSet", "concern", "evidence", "suggestion"],
+      "properties": {
+        "operator": { "type": "string", "minLength": 1 },
+        "layer": {
+          "enum": [
+            "Execution",
+            "Tooling",
+            "Context",
+            "Lifecycle",
+            "Observability",
+            "Verification",
+            "Governance"
+          ]
+        },
+        "anchors": { "type": "array", "items": { "type": "string" } },
+        "regressionSet": { "type": "array", "items": { "type": "string" } },
+        "concern": { "type": "string" },
+        "evidence": { "type": "string" },
+        "suggestion": { "type": "string" }
+      }
+    }
+  }
+}
