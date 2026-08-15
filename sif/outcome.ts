@@ -1,6 +1,6 @@
 import { POSITIVE_STATE_SEQUENCE } from "../extensions/iph";
 
-export type TerminalKind = "in_progress" | "honest_success" | "honest_negative" | "blocked" | "stop";
+export type TerminalKind = "in_progress" | "honest_success" | "honest_negative" | "hold" | "blocked" | "stop";
 
 export interface WorkflowSnapshot {
 	active_state?: string;
@@ -21,11 +21,12 @@ export function classifyTerminal(workflow: WorkflowSnapshot, options?: { stopLoc
 	const novelty = workflow.novelty_level ?? "";
 	const activeIndex = (POSITIVE_STATE_SEQUENCE as readonly string[]).indexOf(active);
 	if ((novelty === "N0-1" || novelty === "N0-2") && activeIndex >= N0_INDEX) return "honest_negative";
+	if (novelty === "N0-3" && activeIndex >= N0_INDEX) return "hold";
 	return "in_progress";
 }
 
 export function outcomeReady(kind: TerminalKind): boolean {
-	return kind === "honest_success" || kind === "honest_negative" || kind === "blocked";
+	return kind === "honest_success" || kind === "honest_negative" || kind === "hold" || kind === "blocked";
 }
 
 export function loggedStates(workflow: WorkflowSnapshot): string[] {

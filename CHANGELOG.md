@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- N0-3 在 `N0_AUDIT` 及之后记为 `hold` 终态（可 terminal ingest，不是 success，也不是
+  N0-1/N0-2）。期刊 census 低于 20 或必选独立 citation route 以 INCOMPLETE 关前沿记
+  `CONTRACT_FAIL`（thin-frontier）；多次 120s hub wait/abort 记过程空转
+  `EFFICIENCY_REGRESSION`，不因此要求跳轴。overrun 仍只警告。
 - 增加仓内隔离的系统迭代测试框架（SIF，`sif/`）：按变更影响面编排 L0–L6，HTIR 区分消息与
   lifecycle 完成，过程门检查角色的发现问题/优化任务/高效完成。日常 `bun run iterate`，
   发布候选 `bun run certify`。连续 live-run 用 `iterate:ingest` 收口（进行中只允许

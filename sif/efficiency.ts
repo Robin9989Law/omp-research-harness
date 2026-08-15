@@ -111,7 +111,7 @@ export function efficiencyReport(options: {
 		issue = "pending hub wait at session exit; use task lifecycle instead of polling";
 	}
 	else if (pendingAtExit) issue = `pending ${lastPending?.toolName ?? "tool"} at session exit`;
-	else if (yieldEarly) issue = "yield-early: session stopped before DIRECTION_LOCK or an honest negative terminal";
+	else if (yieldEarly) issue = "yield-early: session stopped before DIRECTION_LOCK, an honest negative, or a legal N0-3 hold";
 	return {
 		skipAxes: skips,
 		yieldEarly,

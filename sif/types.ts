@@ -141,6 +141,7 @@ export interface TraceStep {
 	op?: string;
 	intent?: string;
 	detail?: string;
+	timeoutMs?: number;
 }
 
 export interface TraceLink {

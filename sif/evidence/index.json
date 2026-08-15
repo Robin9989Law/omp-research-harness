@@ -295,6 +295,207 @@
       "isolatedTrials": null,
       "id": "744e4d71-a64f-4b88-92bd-5b1cc2430990",
       "at": "2026-08-14T23:39:43.748Z"
+    },
+    {
+      "kind": "FAIL",
+      "harnessHead": "54b7a230dcabe5ab20435bfa916d587f171f9f21",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L5|na|3b2744eb8dfd48e1ea208b25d32def164864e5431ff202fc35858330f9f17883|role-scorecard.v1",
+      "step": {
+        "layer": "L5",
+        "node": null,
+        "backend": "live-continuous"
+      },
+      "failureClass": "CONTRACT_FAIL",
+      "evolutionCandidate": {
+        "operator": "strengthen_validator_gate",
+        "deleteScaffold": false,
+        "targetFiles": [
+          "agents/frontier-auditor.md",
+          "extensions/iph.ts"
+        ]
+      },
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/74efaf06-5c31-47f3-a22c-7ecaddd04084/live.htir.json",
+          "sha256": "087624559184e4d13374e623c56630127faa95687173460162735308bcadec63"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": true,
+            "optimizedTask": false,
+            "finishedEfficiently": true
+          },
+          {
+            "role": "frontier",
+            "foundProblem": true,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          },
+          {
+            "role": "layer",
+            "foundProblem": true,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          },
+          {
+            "role": "atomic",
+            "foundProblem": true,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          },
+          {
+            "role": "collision",
+            "foundProblem": true,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 42
+      },
+      "flawId": "CONTRACT_FAIL|strengthen_validator_gate|agents/frontier-auditor.md",
+      "id": "300b73e2-a821-4e6d-bc43-7e60c4969ed3",
+      "at": "2026-08-14T23:54:34.550Z"
+    },
+    {
+      "kind": "FAIL",
+      "harnessHead": "54b7a230dcabe5ab20435bfa916d587f171f9f21",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L0|na|f3358ee92bcd3d4737db81c225eed2af713b6f942cba927cc0e212f2d19fab0c|role-scorecard.v1",
+      "step": {
+        "layer": "L0",
+        "node": null,
+        "backend": "typecheck+system-matrix"
+      },
+      "failureClass": "CONTRACT_FAIL",
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/73b1817a-3017-470e-a599-b15be6e083c6/L0-typecheck+system-matrix.htir.json",
+          "sha256": "124a2123b6c86700e5d0c1e8a36e0eecdddfeea4a26993e3eaadf483bd4a3a3a"
+        },
+        "log": {
+          "path": "sif/evidence/runs/73b1817a-3017-470e-a599-b15be6e083c6/L0-typecheck+system-matrix.log",
+          "sha256": "c96f47892d34af99aa5665ca9b21af578d9f7b04c68891d021faae77e709361e"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": false,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 0
+      },
+      "evolutionCandidate": {
+        "operator": "strengthen_validator_gate",
+        "targetFiles": [
+          "extensions/iph.ts"
+        ]
+      },
+      "flawId": "CONTRACT_FAIL|strengthen_validator_gate|extensions/iph.ts",
+      "id": "5513c680-5e56-47fe-9463-4833a64cf13a",
+      "at": "2026-08-14T23:57:18.262Z"
+    },
+    {
+      "kind": "PASS",
+      "harnessHead": "54b7a230dcabe5ab20435bfa916d587f171f9f21",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L0|na|f3358ee92bcd3d4737db81c225eed2af713b6f942cba927cc0e212f2d19fab0c|role-scorecard.v1",
+      "step": {
+        "layer": "L0",
+        "node": null,
+        "backend": "typecheck+system-matrix"
+      },
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/893591ff-dbb7-4e1d-9ade-22dc537712ee/L0-typecheck+system-matrix.htir.json",
+          "sha256": "124a2123b6c86700e5d0c1e8a36e0eecdddfeea4a26993e3eaadf483bd4a3a3a"
+        },
+        "log": {
+          "path": "sif/evidence/runs/893591ff-dbb7-4e1d-9ade-22dc537712ee/L0-typecheck+system-matrix.log",
+          "sha256": "1bab174dd3b13bf48a0410b1323cbee5de6f0794c80f55af5ce3e62c4c94ec35"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": false,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 0
+      },
+      "isolatedTrials": null,
+      "firstFailId": "5513c680-5e56-47fe-9463-4833a64cf13a",
+      "id": "fadc6d05-16fd-485d-86d1-c1f1f7eb0353",
+      "at": "2026-08-14T23:57:50.348Z"
+    },
+    {
+      "kind": "PASS",
+      "harnessHead": "54b7a230dcabe5ab20435bfa916d587f171f9f21",
+      "iphLock": {
+        "commit": "966f5ae29e283e0510ff6967f2fbe755b0c06a49",
+        "filesSha": "881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930"
+      },
+      "reuseKey": "966f5ae29e283e0510ff6967f2fbe755b0c06a49|881078fa2fb9d4e8518d6a0e51c4ec08c4ba97ac9a390a9279dcc6dead799930|none|L1|na|f3358ee92bcd3d4737db81c225eed2af713b6f942cba927cc0e212f2d19fab0c|role-scorecard.v1",
+      "step": {
+        "layer": "L1",
+        "node": null,
+        "backend": "bun-test"
+      },
+      "artifacts": {
+        "htir": {
+          "path": "sif/evidence/runs/893591ff-dbb7-4e1d-9ade-22dc537712ee/L1-bun-test.htir.json",
+          "sha256": "124a2123b6c86700e5d0c1e8a36e0eecdddfeea4a26993e3eaadf483bd4a3a3a"
+        },
+        "log": {
+          "path": "sif/evidence/runs/893591ff-dbb7-4e1d-9ade-22dc537712ee/L1-bun-test.log",
+          "sha256": "c3a24a97ef423b42c6c44939da376d6329eb9eacbb985b404cf6ea7380690122"
+        }
+      },
+      "scorecard": {
+        "schema": "role-scorecard.v1",
+        "loops": [
+          {
+            "role": "M3",
+            "foundProblem": false,
+            "optimizedTask": true,
+            "finishedEfficiently": false
+          }
+        ],
+        "invalidToolCalls": 0,
+        "informationBudgetHeld": true,
+        "scaffoldThickness": 0
+      },
+      "isolatedTrials": null,
+      "id": "dc1893e4-2fd1-4f5c-8824-ff0a6584594d",
+      "at": "2026-08-14T23:58:32.791Z"
     }
   ]
 }

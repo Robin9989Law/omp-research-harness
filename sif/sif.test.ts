@@ -6,6 +6,7 @@ import { efficiencyFailureClass, efficiencyReport, skipAxes } from "./efficiency
 import { regressionAwareAccept, heldOutRegressed } from "./accept";
 import { compileHtir, compileTraceLinks } from "./htir";
 import { attachFlawId, consolidateFlaws } from "./flaws";
+import { liveDiagnostics, projectFrontierLabor } from "./diagnostics";
 import { ingestLiveRun } from "./ingest";
 import { classifyTerminal, outcomeReady } from "./outcome";
 import { classifyFiles, globMatch, loadImpactSurfaces } from "./impact";
@@ -180,6 +181,7 @@ describe("HTIR-lite", () => {
 			expect(htir.steps.filter(step => step.callId === "call_wait")).toHaveLength(1);
 			expect(htir.steps[0]?.isMessageOnly).toBeFalse();
 			expect(htir.steps[0]?.op).toBe("wait");
+			expect(htir.steps[0]?.timeoutMs).toBe(1000);
 			expect(htir.pendingToolCalls?.[0]?.toolName).toBe("hub");
 			expect(htir.sessionExits?.[0]?.reason).toBe("sigterm");
 		} finally {
@@ -849,13 +851,42 @@ describe("lock-bump and certify", () => {
 });
 
 describe("live ingest", () => {
-	async function writeResearchRoot(options: { activeState: string; novelty?: string; states?: string[] }): Promise<string> {
+	async function writeFrontierLabor(root: string, options: {
+		censusSize: number;
+		kSetSize?: number;
+		routeStatus?: "COMPLETE" | "INCOMPLETE";
+	}): Promise<void> {
+		await writeFile(path.join(root, "near_neighbor_registry.json"), `${JSON.stringify({
+			records: Array.from({ length: options.censusSize }, (_, index) => ({ registry_id: `W-${String(index + 1).padStart(4, "0")}` })),
+		}, null, 2)}\n`);
+		await writeFile(path.join(root, "frontier_coverage.json"), `${JSON.stringify({
+			routes: [
+				{ route_id: "citation", route_type: "CITATION_GRAPH", independent: true, status: options.routeStatus ?? "COMPLETE" },
+				{ route_id: "forward", route_type: "FORWARD_CITATION", independent: true, status: options.routeStatus ?? "COMPLETE" },
+			],
+		}, null, 2)}\n`);
+		await writeFile(path.join(root, "current_evidence_scope.json"), `${JSON.stringify({
+			fulltext_registry_ids: Array.from({ length: options.kSetSize ?? 8 }, (_, index) => `W-${String(index + 1).padStart(4, "0")}`),
+		}, null, 2)}\n`);
+	}
+
+	async function writeResearchRoot(options: {
+		activeState: string;
+		novelty?: string;
+		states?: string[];
+		outputType?: string;
+		censusSize?: number;
+		kSetSize?: number;
+		routeStatus?: "COMPLETE" | "INCOMPLETE";
+		hubWaits?: Array<{ timeoutMs: number; status?: "started" | "message"; op?: string }>;
+	}): Promise<string> {
 		const root = await mkdtemp(path.join(tmpdir(), "sif-live-"));
 		const sessions = path.join(root, ".harness-sessions");
 		await mkdir(sessions, { recursive: true });
 		await writeFile(path.join(root, "workflow_state.json"), `${JSON.stringify({
 			active_state: options.activeState,
 			novelty_level: options.novelty ?? "N0-3",
+			output_type: options.outputType ?? "JOURNAL_ARTICLE",
 			decision_log: (options.states ?? ["SCOPE_LOCK", "PRIOR_CLAIM_DRAIN"]).map((state, index) => ({
 				at: `2026-08-14T15:0${index}:00.000Z`,
 				state,
@@ -866,20 +897,63 @@ describe("live ingest", () => {
 			budget_ms: 2_700_000,
 			started_at: "2026-08-14T14:56:52.416Z",
 			deadline_state: "DIRECTION_LOCK",
+			output_type: options.outputType ?? "JOURNAL_ARTICLE",
 		}, null, 2)}\n`);
-		await writeFile(path.join(sessions, "session.jsonl"), `${JSON.stringify({
-			type: "message",
-			message: {
+		if (options.censusSize != null) {
+			await writeFrontierLabor(root, {
+				censusSize: options.censusSize,
+				kSetSize: options.kSetSize,
+				routeStatus: options.routeStatus,
+			});
+		}
+		const hubCalls = (options.hubWaits ?? []).map((wait, index) => ({
+			type: wait.status === "started" ? "custom" : "message",
+			customType: wait.status === "started" ? "tool_execution_start" : undefined,
+			data: wait.status === "started"
+				? { toolCallId: `wait_${index}`, toolName: "hub", args: { op: wait.op ?? "wait", timeoutMs: wait.timeoutMs } }
+				: undefined,
+			message: wait.status === "started" ? undefined : {
 				role: "assistant",
-				content: [
-					{ type: "toolCall", name: "iph_status", arguments: {} },
-					{ type: "toolCall", name: "iph_transition_plan", arguments: {} },
-					{ type: "toolCall", name: "iph_advance", arguments: { to: options.activeState } },
-				],
+				content: [{
+					type: "toolCall",
+					id: `wait_${index}`,
+					name: "hub",
+					arguments: { op: wait.op ?? "wait", timeoutMs: wait.timeoutMs },
+				}],
 			},
-		})}\n`);
+		}));
+		await writeFile(path.join(sessions, "session.jsonl"), `${[
+			{
+				type: "message",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "toolCall", name: "iph_status", arguments: {} },
+						{ type: "toolCall", name: "iph_transition_plan", arguments: {} },
+						{ type: "toolCall", name: "iph_advance", arguments: { to: options.activeState } },
+					],
+				},
+			},
+			...hubCalls,
+		].map(entry => JSON.stringify(entry)).join("\n")}\n`);
 		return root;
 	}
+
+	const TO_N0_AUDIT = [
+		"SCOPE_LOCK",
+		"PRIOR_CLAIM_DRAIN",
+		"RECENT_FRONTIER",
+		"LITERATURE_REGISTER",
+		"L1_FREEZE",
+		"L2_TRIAGE",
+		"LAYER_DECISION",
+		"K_FULLTEXT",
+		"K_CLAIM_REGISTER",
+		"SYNTHESIZE_COLLISION",
+		"OUTPUT_CLAIM_BIND",
+		"EVIDENCE_VALIDATE",
+		"N0_AUDIT",
+	];
 
 	test("skip-axes catch jumped states; overrun alone is not an efficiency failure", () => {
 		expect(skipAxes(["SCOPE_LOCK", "RECENT_FRONTIER"]).some(item => item.includes("PRIOR_CLAIM_DRAIN"))).toBeTrue();
@@ -905,6 +979,38 @@ describe("live ingest", () => {
 		});
 		expect(paced.nodePacing?.nodeOverruns.length).toBeGreaterThan(0);
 		expect(efficiencyFailureClass(paced)).toBeUndefined();
+	});
+
+	test("N0-3 at N0_AUDIT is a scoreable hold, not in-progress or success", () => {
+		expect(classifyTerminal({ active_state: "N0_AUDIT", novelty_level: "N0-3" })).toBe("hold");
+		expect(outcomeReady("hold")).toBeTrue();
+		expect(classifyTerminal({ active_state: "PRIOR_CLAIM_DRAIN", novelty_level: "N0-3" })).toBe("in_progress");
+		expect(classifyTerminal({ active_state: "N0_AUDIT", novelty_level: "N0-1" })).toBe("honest_negative");
+		expect(projectFrontierLabor({
+			outputType: "JOURNAL_ARTICLE",
+			registry: { records: Array.from({ length: 9 }, (_, index) => ({ id: index })) },
+			frontier: {
+				routes: [
+					{ route_type: "CITATION_GRAPH", independent: true, status: "INCOMPLETE" },
+					{ route_type: "FORWARD_CITATION", independent: true, status: "INCOMPLETE" },
+				],
+			},
+			evidenceScope: { fulltext_registry_ids: ["W-0001", "W-0002", "W-0003", "W-0004", "W-0005", "W-0006", "W-0007"] },
+		})).toMatchObject({
+			censusSize: 9,
+			kSetSize: 7,
+			thinFrontier: true,
+			incompleteRequiredRoutes: ["CITATION_GRAPH", "FORWARD_CITATION"],
+		});
+		const idle = liveDiagnostics({
+			schemaVersion: "1.0",
+			steps: [
+				{ id: 1, sourceFile: "a.jsonl", role: "M3", status: "started", effect: "unknown", name: "hub", op: "wait", timeoutMs: 120_000, isLifecycleCompleted: false, isMessageOnly: false, etcLayer: "Observability", anchor: "SYSTEM.md" },
+				{ id: 2, sourceFile: "a.jsonl", role: "M3", status: "started", effect: "unknown", name: "hub", op: "wait", timeoutMs: 120_000, isLifecycleCompleted: false, isMessageOnly: false, etcLayer: "Observability", anchor: "SYSTEM.md" },
+			],
+		});
+		expect(idle.shortHubWait).toBe(2);
+		expect(idle.shortHubIdle).toBeTrue();
 	});
 
 	test("snapshot of an in-progress root does not write a ledger FAIL", async () => {
@@ -933,6 +1039,10 @@ describe("live ingest", () => {
 	test("terminal DIRECTION_LOCK ingest writes L5 live-continuous evidence", async () => {
 		const root = await writeResearchRoot({
 			activeState: "DIRECTION_LOCK",
+			novelty: "N0-4C",
+			censusSize: 20,
+			kSetSize: 8,
+			routeStatus: "COMPLETE",
 			states: [
 				"SCOPE_LOCK",
 				"PRIOR_CLAIM_DRAIN",
@@ -969,6 +1079,70 @@ describe("live ingest", () => {
 			expect(ledger.records[0]?.step.backend).toBe("live-continuous");
 			expect(ledger.records[0]?.step.layer).toBe("L5");
 			expect(ledger.records[0]?.kind).toBe("PASS");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+			await rm(tmp, { recursive: true, force: true });
+		}
+	});
+
+	test("N0-3 HOLD ingest does not require --snapshot and scores thin-frontier as CONTRACT_FAIL", async () => {
+		const root = await writeResearchRoot({
+			activeState: "N0_AUDIT",
+			novelty: "N0-3",
+			censusSize: 9,
+			kSetSize: 7,
+			routeStatus: "INCOMPLETE",
+			states: TO_N0_AUDIT,
+		});
+		const tmp = await mkdtemp(path.join(tmpdir(), "sif-ingest-hold-"));
+		try {
+			const report = await ingestLiveRun({
+				researchRoot: root,
+				ledgerFile: path.join(tmp, "index.json"),
+				runsDir: path.join(tmp, "runs"),
+			});
+			expect(report.terminalKind).toBe("hold");
+			expect(report.outcomeReady).toBeTrue();
+			expect(report.outcomeClass).toBe("failed");
+			expect(report.failureClass).toBe("CONTRACT_FAIL");
+			expect(report.summary?.thinFrontier).toBeTrue();
+			expect(report.summary?.censusSize).toBe(9);
+			expect(report.summary?.kSetSize).toBe(7);
+			expect(report.efficiency?.yieldEarly).toBeFalse();
+			const ledger = await loadLedger(path.join(tmp, "index.json"));
+			expect(ledger.records[0]?.kind).toBe("FAIL");
+			expect(ledger.records[0]?.failureClass).toBe("CONTRACT_FAIL");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+			await rm(tmp, { recursive: true, force: true });
+		}
+	});
+
+	test("repeated 120s hub wait/abort is an efficiency process item", async () => {
+		const root = await writeResearchRoot({
+			activeState: "N0_AUDIT",
+			novelty: "N0-3",
+			censusSize: 20,
+			kSetSize: 8,
+			routeStatus: "COMPLETE",
+			hubWaits: [
+				{ timeoutMs: 120_000, status: "started" },
+				{ timeoutMs: 120_000, status: "started" },
+			],
+			states: TO_N0_AUDIT,
+		});
+		const tmp = await mkdtemp(path.join(tmpdir(), "sif-ingest-hub-"));
+		try {
+			const report = await ingestLiveRun({
+				researchRoot: root,
+				ledgerFile: path.join(tmp, "index.json"),
+				runsDir: path.join(tmp, "runs"),
+			});
+			expect(report.terminalKind).toBe("hold");
+			expect(report.failureClass).toBe("EFFICIENCY_REGRESSION");
+			expect(report.summary?.shortHubIdle).toBeTrue();
+			expect(report.summary?.thinFrontier).toBeFalse();
+			expect(report.efficiency?.skipAxes).toEqual([]);
 		} finally {
 			await rm(root, { recursive: true, force: true });
 			await rm(tmp, { recursive: true, force: true });

@@ -100,6 +100,7 @@ function mergeStep(existing: TraceStep, incoming: TraceStep): TraceStep {
 		op: incoming.op ?? existing.op,
 		intent: incoming.intent ?? existing.intent,
 		detail: incoming.detail ?? existing.detail,
+		timeoutMs: incoming.timeoutMs ?? existing.timeoutMs,
 		status: incoming.status === "message" ? existing.status : incoming.status,
 	};
 }
@@ -252,6 +253,7 @@ export async function compileHtir(options: {
 						op: typeof tool.args.op === "string" ? tool.args.op : undefined,
 						intent: tool.intent,
 						detail: detailFor(tool.name, tool.args),
+						timeoutMs: typeof tool.args.timeoutMs === "number" ? tool.args.timeoutMs : undefined,
 					});
 				}
 			} else if (type === "custom" && entry.customType === "tool_execution_start") {
@@ -278,6 +280,7 @@ export async function compileHtir(options: {
 					op: typeof args.op === "string" ? args.op : undefined,
 					intent: typeof data.intent === "string" ? data.intent : undefined,
 					detail: detailFor(name, args),
+					timeoutMs: typeof args.timeoutMs === "number" ? args.timeoutMs : undefined,
 				});
 			} else if (type === "custom" && entry.customType === "session_exit") {
 				const data = asObject(entry.data);

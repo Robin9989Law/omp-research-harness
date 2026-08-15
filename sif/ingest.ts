@@ -2,7 +2,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { ablationReport, type AblationLadder, type HarnessFixAblation } from "./ablation";
-import { liveDiagnostics, type LiveDiagnostics } from "./diagnostics";
+import { liveDiagnostics, projectFrontierLabor, type LiveDiagnostics } from "./diagnostics";
 import { efficiencyFailureClass, efficiencyReport, resolveOutputType } from "./efficiency";
 import { compileHtir } from "./htir";
 import { appendLedger, artifactHash, reuseKey } from "./ledger";
@@ -59,6 +59,11 @@ export async function resolveSessionDir(researchRoot: string, sessionDir?: strin
 
 async function loadJson(file: string): Promise<JsonObject> {
 	return asObject(JSON.parse(await readFile(file, "utf8")));
+}
+
+async function loadJsonOptional(file: string): Promise<JsonObject | undefined> {
+	if (!await exists(file)) return undefined;
+	return loadJson(file);
 }
 
 async function writeRunArtifact(runId: string, name: string, contents: string, runsDir = RUNS_DIR): Promise<{ path: string; sha256: string }> {
@@ -119,7 +124,21 @@ export async function ingestLiveRun(options: {
 	const inProgress = options.snapshot === true || terminalKind === "in_progress";
 	const processIssue = elicitationRegression(scorecard, { specialist, inProgress, htir });
 	const ready = !inProgress && outcomeReady(terminalKind);
-	const diagnostics = liveDiagnostics(htir, workflow, harnessRun);
+	const [registry, frontier, evidenceScope] = await Promise.all([
+		loadJsonOptional(path.join(researchRoot, "near_neighbor_registry.json")),
+		loadJsonOptional(path.join(researchRoot, "frontier_coverage.json")),
+		loadJsonOptional(path.join(researchRoot, "current_evidence_scope.json")),
+	]);
+	const outputType = typeof workflow.output_type === "string"
+		? workflow.output_type
+		: typeof harnessRun.output_type === "string" ? harnessRun.output_type : undefined;
+	const frontierLabor = projectFrontierLabor({
+		outputType,
+		registry,
+		frontier,
+		evidenceScope,
+	});
+	const diagnostics = liveDiagnostics(htir, workflow, harnessRun, frontierLabor);
 	diagnostics.projection = projectionFidelity({
 		htir,
 		activeState: typeof workflow.active_state === "string" ? workflow.active_state : undefined,
@@ -147,10 +166,23 @@ export async function ingestLiveRun(options: {
 	}
 
 	const validatorBlocks = validator === "failed";
+	const thinFrontier = diagnostics.frontierLabor?.thinFrontier === true;
+	const shortHubIdle = diagnostics.shortHubIdle === true;
 	const outcomeIsReady = ready && !validatorBlocks;
+	const thinFrontierIssue = thinFrontier
+		? `thin-frontier: census ${diagnostics.frontierLabor?.censusSize ?? 0} < ${diagnostics.frontierLabor?.censusMin ?? 20}`
+			+ ((diagnostics.frontierLabor?.incompleteRequiredRoutes.length ?? 0) > 0
+				? `; incomplete required routes ${diagnostics.frontierLabor?.incompleteRequiredRoutes.join(",")}`
+				: "")
+		: undefined;
+	const shortHubIssue = shortHubIdle
+		? `short hub wait idle: ${diagnostics.shortHubWait} waits <=120s with ${diagnostics.shortHubAbortOrStarted} abort/started`
+		: undefined;
 	let failureClass: FailureClass | undefined;
-	if (!inProgress && !outcomeIsReady) failureClass = "CONTRACT_FAIL";
+	if (!inProgress && thinFrontier) failureClass = "CONTRACT_FAIL";
+	else if (!inProgress && !outcomeIsReady) failureClass = "CONTRACT_FAIL";
 	else if (!inProgress) failureClass = efficiencyFailureClass(efficiency);
+	if (!failureClass && !inProgress && shortHubIdle) failureClass = "EFFICIENCY_REGRESSION";
 	if (!failureClass && !inProgress && processIssue) failureClass = "ELICITATION_REGRESSION";
 	if (!failureClass && !inProgress && diagnostics.projection && !diagnostics.projection.ok) {
 		failureClass = "CONTRACT_FAIL";
@@ -160,9 +192,9 @@ export async function ingestLiveRun(options: {
 		? null
 		: outcomeClassFor({ outcomeReady: outcomeIsReady, scorecard, specialist, inProgress: false, htir });
 	const assisted = (htir.sessionExits ?? []).some(item => item.reason === "sigterm" || item.reason === "dispose");
-	const outcomeClass = inProgress
+	let outcomeClass: OutcomeClass | null = inProgress
 		? null
-		: !outcomeIsReady
+		: thinFrontier || !outcomeIsReady || terminalKind === "hold"
 			? "failed"
 			: (diagnostics.unboundedSearch.length > 0 || (efficiency.skipAxes.length > 0))
 				? "unsafe_invalid"
@@ -202,9 +234,18 @@ export async function ingestLiveRun(options: {
 			activeState: typeof workflow.active_state === "string" ? workflow.active_state : htir.activeState,
 			nextRequiredAction: diagnostics.nextRequiredAction,
 			terminalKind,
+			outcomeClass,
+			failureClass,
 			processIssue,
 			efficiencyIssue: efficiency.issue,
 			m3HubWait: diagnostics.m3HubWait,
+			shortHubWait: diagnostics.shortHubWait,
+			shortHubAbortOrStarted: diagnostics.shortHubAbortOrStarted,
+			shortHubIdle: diagnostics.shortHubIdle,
+			censusSize: diagnostics.frontierLabor?.censusSize,
+			kSetSize: diagnostics.frontierLabor?.kSetSize,
+			incompleteRequiredRoutes: diagnostics.frontierLabor?.incompleteRequiredRoutes,
+			thinFrontier: diagnostics.frontierLabor?.thinFrontier,
 			hubOps: diagnostics.hubOps,
 			duplicateAdvances: diagnostics.duplicateAdvances,
 			pending: diagnostics.pendingToolCalls.map(item => `${item.toolName}${item.op ? `:${item.op}` : ""}`),
@@ -235,7 +276,7 @@ export async function ingestLiveRun(options: {
 		const repairSpec = failureClass
 			? attributeFailure({
 				failureClass,
-				message: processIssue ?? efficiency.issue ?? `terminal=${terminalKind}`,
+				message: thinFrontierIssue ?? shortHubIssue ?? processIssue ?? efficiency.issue ?? `terminal=${terminalKind}`,
 				steps: htir.steps,
 			})
 			: undefined;
