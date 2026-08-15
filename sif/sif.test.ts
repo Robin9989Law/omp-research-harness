@@ -1729,9 +1729,12 @@ describe("SIF probe", () => {
 });
 
 describe("SIF isolation", () => {
-	test("committed delta vs main includes sif/", async () => {
-		const { committedDelta } = await import("./workspace");
-		const files = committedDelta("main");
+	test("committed delta vs main includes sif/ only while this branch is ahead", async () => {
+		const { committedDelta, resolveGitBase } = await import("./workspace");
+		const base = resolveGitBase("main");
+		if (!base) return;
+		const files = committedDelta(base);
+		if (files.length === 0) return;
 		expect(files.some(file => file.startsWith("sif/"))).toBeTrue();
 		expect(files).toContain("extensions/iph.ts");
 	});

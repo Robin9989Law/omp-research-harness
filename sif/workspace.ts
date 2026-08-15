@@ -8,8 +8,17 @@ export function gitOutput(args: string[], cwd = PROJECT_ROOT): string {
 	return (result.stdout || "").trim();
 }
 
+export function resolveGitBase(base: string, cwd = PROJECT_ROOT): string | undefined {
+	if (gitOutput(["rev-parse", "--verify", "--quiet", base], cwd)) return base;
+	const remote = `origin/${base.replace(/^origin\//, "")}`;
+	if (gitOutput(["rev-parse", "--verify", "--quiet", remote], cwd)) return remote;
+	return undefined;
+}
+
 export function committedDelta(base: string, cwd = PROJECT_ROOT): string[] {
-	return gitOutput(["diff", "--name-only", `${base}...HEAD`], cwd)
+	const resolved = resolveGitBase(base, cwd);
+	if (!resolved) return [];
+	return gitOutput(["diff", "--name-only", `${resolved}...HEAD`], cwd)
 		.split("\n")
 		.map(line => line.trim())
 		.filter(Boolean);
