@@ -89,9 +89,9 @@ bun run certify              # 结果门 + 过程门；不 push / 不 publish
 
 ```text
 L0 静态：typecheck + topology audit + doc/version scan
-L1 单元：bun test + Python unittest/pytest
+L1 单元：bun test + IPH pytest（`IPH_SKILL_DIR` 未设则延期 pytest）
 L2 组件：真实 OMP loader/tool/hook E2E
-L3 恢复：STOP/BLOCKED/rollback 故障注入
+L3 恢复：STOP/BLOCKED/rollback 故障注入（SIF `recovery-inject`，不与 L2 共用）
 L4 部署：install transaction + package contents + plugin doctor
 L5 真实模型：M3 可跨节点做全局推理，但每回合只提交一个合同事务；指定 specialist 独立复核
 L6 能力激发：H0–H3 梯子 + HarnessFix 四消融（prompt-only / 无轨迹 / 自由编辑 / 无回归门）；比较时固定信息预算

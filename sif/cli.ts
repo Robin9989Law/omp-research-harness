@@ -25,7 +25,7 @@ import {
 } from "./state";
 import type { FailureClass, IterationState, PlanStep, RepairSpec } from "./types";
 import { SCHEMA_VERSION, SCORECARD_SCHEMA } from "./types";
-import { extraLayersFromLastHit, loadLatestProbe, runProbe } from "./probe";
+import { extraLayersFromLastHit, loadLatestProbe, probeSatisfiesStep, runProbe } from "./probe";
 import { formatSessionLine, runUnifiedSession } from "./session";
 import { autoCommitHarness, defaultEvalBase, evaluationSignature, workspaceSnapshot } from "./workspace";
 
@@ -308,6 +308,21 @@ async function advanceOne(state: IterationState, argv: string[]): Promise<Iterat
 	});
 	const reusable = findReusablePass(await loadLedger(), key);
 	if (reusable && !step.realModels) {
+		state.currentStepIndex += 1;
+		state.next_required_action = state.currentStepIndex >= state.plan.steps.length ? "CERTIFY" : "RUN_STEP";
+		await saveState(state);
+		return state;
+	}
+	if (probeSatisfiesStep(await loadLatestProbe(), step, state.delta.signature)) {
+		markExecuted(state, step.id, "RUN");
+		await appendLedger({
+			kind: "PASS",
+			harnessHead: state.harnessHead,
+			iphLock: state.iphLock,
+			reuseKey: key,
+			step: { layer: step.layer, node: step.nodes?.[0] ?? null, backend: step.backend },
+			scorecard: state.scorecard ?? null,
+		});
 		state.currentStepIndex += 1;
 		state.next_required_action = state.currentStepIndex >= state.plan.steps.length ? "CERTIFY" : "RUN_STEP";
 		await saveState(state);

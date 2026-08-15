@@ -61,8 +61,29 @@ export function probeOraclesForImpact(impact: ImpactResult): Exclude<ProbeOracle
 		oracles.push("system-matrix");
 	}
 	if (impact.layers.includes("L1")) oracles.push("bun-test");
-	if (impact.layers.includes("L2") || impact.layers.includes("L3")) oracles.push("omp-e2e");
+	if (impact.layers.includes("L2")) oracles.push("omp-e2e");
 	return oracles;
+}
+
+const STEP_PROBE_ORACLES: Record<string, Exclude<ProbeOracle, "snapshot">[]> = {
+	"typecheck+system-matrix": ["typecheck", "system-matrix"],
+	"bun-test": ["bun-test"],
+	"omp-e2e": ["omp-e2e"],
+};
+
+export function probeSatisfiesStep(
+	card: Pick<ProbeCard, "status" | "deltaSignature" | "oraclesRun" | "emptyDelta"> | null | undefined,
+	step: { layer: Layer; backend: string; realModels?: boolean },
+	signature: string,
+): boolean {
+	if (!card || card.status !== "CLEAR" || card.emptyDelta) return false;
+	if (card.deltaSignature !== signature) return false;
+	if (step.realModels || step.layer === "L3" || step.layer === "L4" || step.layer === "L5" || step.layer === "L6") {
+		return false;
+	}
+	const needed = STEP_PROBE_ORACLES[step.backend];
+	if (!needed) return false;
+	return needed.every(oracle => card.oraclesRun.includes(oracle));
 }
 
 export function layersFromRepairSpec(spec: Pick<RepairSpec, "regressionSet"> | null | undefined): Layer[] {

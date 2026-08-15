@@ -4,6 +4,7 @@ import { ablationReport } from "./ablation";
 import { liveDiagnostics } from "./diagnostics";
 import { compileHtir } from "./htir";
 import { allocateIsolatedRunRoot, cleanupIsolatedRunRoot, l5TrialsForStep } from "./isolate";
+import { runRecoveryInjection } from "./recovery";
 import { elicitationRegression, scoreHtir } from "./scorecard";
 import { SCORECARD_SCHEMA } from "./types";
 
@@ -37,6 +38,14 @@ export async function runBackend(step: PlanStep, options?: {
 	if (step.backend === "real-model-nodes") {
 		return runIsolatedL5(step, options?.env);
 	}
+	if (step.backend === "recovery-inject") {
+		const report = runRecoveryInjection();
+		return {
+			ok: report.ok,
+			exitCode: report.ok ? 0 : 1,
+			output: `sif_backend=L3 recovery=${report.cases.join(",")} ${JSON.stringify(report)}\n`,
+		};
+	}
 	const cwd = options?.cwd ?? PROJECT_ROOT;
 	const commands = commandsFor(step);
 	let output = "";
@@ -54,6 +63,9 @@ export async function runBackend(step: PlanStep, options?: {
 		]);
 		output += `${stdout}${stderr ? `\n[stderr]\n${stderr}` : ""}`;
 		if (exitCode !== 0) return { ok: false, output, exitCode };
+	}
+	if (step.backend === "bun-test+iph-pytest" && !(options?.env?.IPH_SKILL_DIR ?? process.env.IPH_SKILL_DIR)?.trim()) {
+		output += "sif_backend=DEFERRED layer=L1 reason=iph-pytest-skill-dir-unset\n";
 	}
 	return { ok: true, output, exitCode: 0 };
 }
@@ -148,8 +160,18 @@ export function commandsFor(step: PlanStep): string[][] {
 			return [["bun", "run", "typecheck"], ["bun", "run", "test:system"]];
 		case "bun-test":
 			return [["bun", "test"]];
+		case "bun-test+iph-pytest": {
+			const commands = [["bun", "test"]];
+			const skill = (process.env.IPH_SKILL_DIR ?? "").trim();
+			if (skill) {
+				commands.push([process.env.IPH_PYTHON || "python3", "-m", "pytest", `${skill}/tests`, "-q"]);
+			}
+			return commands;
+		}
 		case "omp-e2e":
 			return [["bun", "run", "test:omp"]];
+		case "recovery-inject":
+			return [];
 		case "install+package-check":
 			return [["bun", "run", "test:install"], ["bun", "scripts/check-package.ts"]];
 		case "test-nodes":

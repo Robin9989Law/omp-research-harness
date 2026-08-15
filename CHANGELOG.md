@@ -13,7 +13,10 @@
   commit 安全 harness 差集后再 certify（`--no-auto-commit` 才停在 COMMIT）；空差集
   wait。非 main 默认 `--base main`，main 上只跟工作区差集。
   探针 L0 含 typecheck+system-matrix；框架 extraLayers 取 observations.jsonl 最近 HIT。
-  默认一行 SESSION 摘要，`--json` 出全事件。`--watch` 跟随改动。连续 live-run 用 `iterate:ingest` 收口（进行中只允许
+  默认一行 SESSION 摘要，`--json` 出全事件。L3 独立 recovery-inject（STOP/BLOCKED/rollback），
+  L1 在 `IPH_SKILL_DIR` 下加 IPH pytest。回归接受拒绝已完整协议上的脚手架变厚。角色记分按
+  frontier/atomic/review 合同抽。同内容签名的探针 CLEAR 可 reuse 到 L0–L2（L3/L4 仍跑）。
+  certify 门 A 核对账本 L0–L4 PASS。`--watch` 跟随改动。连续 live-run 用 `iterate:ingest` 收口（进行中只允许
   `--snapshot`，不写 FAIL、不开 validator）。Codex forensics / rollout 用 `iterate:trace`
   只读评分，不能冒充 IPH live-run。过程门区分 M3 的 hub wait 与 specialist 的
   平台 pty；`session_exit` 挂起工具进入效率诊断。Replay 走 HarnessFix 回归感知接受

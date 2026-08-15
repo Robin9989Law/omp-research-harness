@@ -84,6 +84,10 @@ describe("SIF impact map", () => {
 		expect(impact.unknownFiles).toEqual(["mystery/new-thing.ts"]);
 		expect(impact.layers).toEqual(["L0", "L1", "L2", "L3", "L4"]);
 		expect(impact.classes).toContain("unknown");
+		const planned = buildPlan(impact);
+		expect(planned.steps.some(step => step.backend === "recovery-inject")).toBeTrue();
+		expect(planned.steps.some(step => step.backend === "bun-test+iph-pytest")).toBeTrue();
+		expect(planned.steps.filter(step => step.backend === "omp-e2e")).toHaveLength(1);
 	});
 
 	test("iph-lock.json requires deterministic node fixtures", async () => {
@@ -261,6 +265,66 @@ describe("role scorecard", () => {
 		}, { specialist: "frontier-auditor" });
 		expect(elicitationRegression(scorecard, { specialist: "frontier-auditor" })).toContain("disposition");
 		expect(outcomeClassFor({ outcomeReady: true, scorecard, specialist: "frontier-auditor" })).toBe("unverified_success");
+	});
+
+	test("frontier, atomic, and review loops use role contracts not just tool names", () => {
+		const step = (id: number, role: string, name: string, extras: Partial<import("./types").TraceStep> = {}): import("./types").TraceStep => ({
+			id,
+			sourceFile: "a.jsonl",
+			role,
+			status: extras.status ?? "message",
+			effect: extras.effect ?? "read",
+			name,
+			isLifecycleCompleted: extras.isLifecycleCompleted ?? false,
+			isMessageOnly: extras.isMessageOnly ?? true,
+			etcLayer: extras.etcLayer ?? "Context",
+			anchor: extras.anchor ?? "agents/frontier-auditor.md",
+			...extras,
+		});
+		const frontier = scoreHtir({
+			schemaVersion: "1.0",
+			steps: [
+				step(1, "frontier-auditor", "iph_validate", { status: "failure", detail: "coverage gap; preprint listed as peer-reviewed" }),
+				step(2, "frontier-auditor", "task", { isLifecycleCompleted: true, detail: "quorum recorded separately from optional" }),
+			],
+		});
+		expect(frontier.loops.find(loop => loop.role === "frontier")).toEqual({
+			role: "frontier",
+			foundProblem: true,
+			optimizedTask: true,
+			finishedEfficiently: true,
+		});
+		const stale = scoreHtir({
+			schemaVersion: "1.0",
+			steps: [step(1, "frontier-auditor", "task", { isLifecycleCompleted: true, detail: "stale identity reused" })],
+		});
+		expect(stale.loops.find(loop => loop.role === "frontier")?.finishedEfficiently).toBeFalse();
+		const atomic = scoreHtir({
+			schemaVersion: "1.0",
+			steps: [
+				step(1, "atomic-claim-extractor", "iph_validate", { status: "failure", detail: "landing page is not full text" }),
+				step(2, "atomic-claim-extractor", "write", { detail: "locator bound to theorem 3.1", isLifecycleCompleted: true }),
+			],
+		});
+		expect(atomic.loops.find(loop => loop.role === "atomic")?.optimizedTask).toBeTrue();
+		expect(atomic.loops.find(loop => loop.role === "atomic")?.finishedEfficiently).toBeTrue();
+		const batched = scoreHtir({
+			schemaVersion: "1.0",
+			steps: [step(1, "atomic-claim-extractor", "read", { detail: "batch full text outside K" })],
+		});
+		expect(batched.loops.find(loop => loop.role === "atomic")?.optimizedTask).toBeFalse();
+		const review = scoreHtir({
+			schemaVersion: "1.0",
+			steps: [
+				step(1, "iph-reviewer", "iph_review", { detail: "requiredRemediation: replace archive", isLifecycleCompleted: true }),
+			],
+		});
+		expect(review.loops.find(loop => loop.role === "review")).toEqual({
+			role: "review",
+			foundProblem: true,
+			optimizedTask: true,
+			finishedEfficiently: true,
+		});
 	});
 
 	test("a continuous session may spawn more than one specialist task", () => {
@@ -612,6 +676,45 @@ describe("lock-bump and certify", () => {
 		expect(satisfied.issues.some(issue => issue.includes("L6"))).toBeFalse();
 	});
 
+	test("certify gate A requires a ledger PASS for each planned L0–L4 layer", async () => {
+		const { missingOutcomeLayerPasses } = await import("./certify");
+		const state = sampleState({
+			next_required_action: "CERTIFY",
+			outcomeClass: "autonomous_verified_success",
+			workingTreeDirty: false,
+			plan: {
+				steps: [
+					{ id: "L0-typecheck+system-matrix", layer: "L0", backend: "typecheck+system-matrix", oracle: "outcome" },
+					{ id: "L2-omp-e2e", layer: "L2", backend: "omp-e2e", oracle: "outcome" },
+				],
+			},
+		});
+		expect(missingOutcomeLayerPasses(state, { schemaVersion: "1.0", records: [] })).toEqual([
+			"missing L0 PASS in evidence ledger",
+			"missing L2 PASS in evidence ledger",
+		]);
+		const gated = await certify({
+			state,
+			allowDirty: true,
+			dirtyPorcelain: "",
+			ledger: {
+				schemaVersion: "1.0",
+				records: [{
+					id: "l0",
+					kind: "PASS",
+					at: "2026-08-14T00:00:00.000Z",
+					harnessHead: "h",
+					iphLock: { commit: "b".repeat(40), filesSha: "c".repeat(64) },
+					reuseKey: "k",
+					step: { layer: "L0", backend: "typecheck+system-matrix" },
+				}],
+			},
+		});
+		expect(gated.ok).toBeFalse();
+		expect(gated.issues.some(issue => issue.includes("missing L2 PASS"))).toBeTrue();
+		expect(gated.issues.some(issue => issue.includes("missing L0 PASS"))).toBeFalse();
+	});
+
 	test("repair specs are scoped operators, not free-form edits", () => {
 		const spec = attributeFailure({
 			failureClass: "ELICITATION_REGRESSION",
@@ -690,6 +793,12 @@ describe("lock-bump and certify", () => {
 		});
 		expect(regressionAwareAccept({ before, after, targetGone: true, heldOutStillPass: true }).accept).toBeTrue();
 		expect(regressionAwareAccept({ before, after, targetGone: false, heldOutStillPass: true }).accept).toBeFalse();
+		expect(regressionAwareAccept({
+			before: { ...after, scaffoldThickness: 2 },
+			after: { ...after, scaffoldThickness: 5 },
+			targetGone: true,
+			heldOutStillPass: true,
+		}).accept).toBeFalse();
 		expect(heldOutRegressed({
 			schemaVersion: "1.0",
 			records: [
@@ -1171,6 +1280,31 @@ describe("SIF probe", () => {
 			nodesRequired: false,
 			unknownFiles: [],
 		})).toEqual(["typecheck", "system-matrix", "bun-test", "omp-e2e"]);
+		expect(probeOraclesForImpact({
+			layers: ["L3"],
+			nodes: [],
+			failures: [],
+			ablation: false,
+			classes: ["sif"],
+			nodesRequired: false,
+			unknownFiles: [],
+		})).toEqual([]);
+	});
+
+	test("CLEAR probe with matching content signature reuses L0–L2 but not L3/L4", async () => {
+		const { probeSatisfiesStep } = await import("./probe");
+		const clear = {
+			status: "CLEAR" as const,
+			deltaSignature: "sig",
+			oraclesRun: ["typecheck", "system-matrix", "bun-test", "omp-e2e"] as import("./probe").ProbeOracle[],
+		};
+		expect(probeSatisfiesStep(clear, { layer: "L0", backend: "typecheck+system-matrix" }, "sig")).toBeTrue();
+		expect(probeSatisfiesStep(clear, { layer: "L1", backend: "bun-test" }, "sig")).toBeTrue();
+		expect(probeSatisfiesStep(clear, { layer: "L1", backend: "bun-test+iph-pytest" }, "sig")).toBeFalse();
+		expect(probeSatisfiesStep(clear, { layer: "L2", backend: "omp-e2e" }, "sig")).toBeTrue();
+		expect(probeSatisfiesStep(clear, { layer: "L3", backend: "recovery-inject" }, "sig")).toBeFalse();
+		expect(probeSatisfiesStep(clear, { layer: "L4", backend: "install+package-check" }, "sig")).toBeFalse();
+		expect(probeSatisfiesStep({ ...clear, deltaSignature: "other" }, { layer: "L0", backend: "typecheck+system-matrix" }, "sig")).toBeFalse();
 	});
 
 	test("HIT writes OBSERVE with CES advice and does not append the certify ledger", async () => {
@@ -1697,6 +1831,28 @@ describe("Harbor isolation and HarnessFix RQ3", () => {
 		}, { realModels: true, env: { SIF_FIXTURE_ROOT: "" } });
 		expect(result.ok).toBeFalse();
 		expect(result.output).toContain("refusing to reuse PROJECT_ROOT");
+	});
+
+	test("L3 recovery injection covers STOP, BLOCKED, and rollback contracts", async () => {
+		const { runRecoveryInjection } = await import("./recovery");
+		const { runBackend, commandsFor } = await import("./backends");
+		const report = runRecoveryInjection();
+		expect(report.ok).toBeTrue();
+		expect(report.cases).toEqual(["STOP", "BLOCKED", "rollback"]);
+		const backend = await runBackend({
+			id: "L3-recovery-inject",
+			layer: "L3",
+			backend: "recovery-inject",
+			oracle: "outcome",
+		});
+		expect(backend.ok).toBeTrue();
+		expect(backend.output).toContain("sif_backend=L3");
+		expect(commandsFor({
+			id: "L1-bun-test+iph-pytest",
+			layer: "L1",
+			backend: "bun-test+iph-pytest",
+			oracle: "outcome",
+		}).map(command => command[0])).toContain("bun");
 	});
 
 	test("L6 --ablation without a live trace still runs the four-policy gate", async () => {

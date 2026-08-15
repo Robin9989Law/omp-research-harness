@@ -2,7 +2,20 @@ import { spawnSync } from "node:child_process";
 import { heldOutRegressed } from "./accept";
 import { loadLedger, pendingEvolution } from "./ledger";
 import { filesShaFromLock, loadState, PROJECT_ROOT } from "./state";
-import type { IterationState, LedgerIndex } from "./types";
+import type { IterationState, Layer, LedgerIndex } from "./types";
+
+const OUTCOME_LAYERS = new Set<Layer>(["L0", "L1", "L2", "L3", "L4"]);
+
+export function missingOutcomeLayerPasses(state: IterationState, ledger: LedgerIndex): string[] {
+	const needed = [...new Set(
+		state.plan.steps
+			.filter(step => OUTCOME_LAYERS.has(step.layer) && !step.realModels && !step.ablation)
+			.map(step => step.layer),
+	)];
+	return needed
+		.filter(layer => !ledger.records.some(record => record.kind === "PASS" && record.step.layer === layer))
+		.map(layer => `missing ${layer} PASS in evidence ledger`);
+}
 
 export function independentIsolatedPasses(ledger: LedgerIndex): number {
 	return ledger.records
@@ -64,6 +77,7 @@ export async function certify(options?: {
 			const ablationPass = ledger.records.some(record => record.step.layer === "L6" && record.kind === "PASS");
 			if (!ablationPass) issues.push("L6 ablation still deferred for a prompt/scaffold change");
 		}
+		issues.push(...missingOutcomeLayerPasses(state, ledger));
 	}
 
 	const pending = pendingEvolution(ledger);

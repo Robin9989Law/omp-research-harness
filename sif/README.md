@@ -59,6 +59,8 @@ SIF_FIXTURE_ROOT=/path/to/fresh-fixtures bun run iterate -- --real-models
 bun run iterate -- --ablation   # L6：H0–H3 + HarnessFix 四消融（无轨迹也可跑政策对照）
 ```
 
+L3 是独立的 STOP/BLOCKED/rollback 注入，不再和 L2 共用 `omp-e2e`。L1 在设置了 `IPH_SKILL_DIR` 时加跑 IPH pytest。同内容签名的探针 CLEAR 会 reuse 到框架 L0–L2，并写入账本 PASS；L3/L4 仍要跑。certify 会核对计划中的 L0–L4 是否已有账本 PASS。
+
 地图：
 
 - 合同：`schema.json` + `iteration_state.json`（gitignore）

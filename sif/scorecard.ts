@@ -68,7 +68,46 @@ export function m3PolledWithHub(steps: TraceStep[]): boolean {
 	});
 }
 
+function blobOf(steps: TraceStep[]): string {
+	return steps.map(step => [step.detail, step.intent, step.name, step.targetState].filter(Boolean).join(" ")).join("\n");
+}
+
 function loopFor(role: AgentRole, steps: TraceStep[], all: TraceStep[]): RoleLoop {
+	if (steps.length > 0 && role === "frontier") {
+		const blob = blobOf(steps);
+		return {
+			role,
+			foundProblem: steps.some(step => step.status === "failure")
+				|| /NOT_QUALIFIED|preprint|coverage|DOWNLOAD_BLOCKED/i.test(blob)
+				|| all.some(step => step.disposition === "OVERRIDDEN" || step.disposition === "ACCEPTED"),
+			optimizedTask: !/optional.{0,20}(?:as|into|is) quorum|quorum.{0,20}includes optional|mix(?:ed|ing) quorum/i.test(blob)
+				&& !steps.some(step => INVALID_TOOLS.has(step.name ?? "")),
+			finishedEfficiently: steps.some(step => step.isLifecycleCompleted) && !/stale identity|stale specialist/i.test(blob),
+		};
+	}
+	if (steps.length > 0 && role === "atomic") {
+		const blob = blobOf(steps);
+		return {
+			role,
+			foundProblem: steps.some(step => step.status === "failure")
+				|| /abstract|landing page|not full text/i.test(blob),
+			optimizedTask: !/batch full text|outside K/i.test(blob)
+				&& !steps.some(step => INVALID_TOOLS.has(step.name ?? "")),
+			finishedEfficiently: steps.some(step => step.isLifecycleCompleted || /locator/i.test(step.detail ?? "")),
+		};
+	}
+	if (steps.length > 0 && role === "review") {
+		const blob = blobOf(steps);
+		return {
+			role,
+			foundProblem: steps.some(step => step.status === "failure" || step.name === "iph_review")
+				|| /BLOCKED_CAPABILITY|remediation/i.test(blob),
+			optimizedTask: !steps.some(step => INVALID_TOOLS.has(step.name ?? ""))
+				&& !/rewrite existing evidence|prior epoch/i.test(blob),
+			finishedEfficiently: names(steps).includes("iph_review")
+				&& (steps.some(step => step.isLifecycleCompleted) || /remediation/i.test(blob)),
+		};
+	}
 	const toolNames = names(steps);
 	const foundProblem = steps.some(step => step.status === "failure" || step.name === "iph_validate" || step.disposition === "OVERRIDDEN")
 		|| all.some(step => step.disposition === "OVERRIDDEN" || step.disposition === "ACCEPTED");

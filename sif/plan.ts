@@ -2,9 +2,9 @@ import type { ImpactResult, Layer, PlanStep } from "./types";
 
 const BACKENDS: Record<string, string> = {
 	L0: "typecheck+system-matrix",
-	L1: "bun-test",
+	L1: "bun-test+iph-pytest",
 	L2: "omp-e2e",
-	L3: "omp-e2e",
+	L3: "recovery-inject",
 	L4: "install+package-check",
 	L5: "real-model-nodes",
 	L6: "scaffold-ablation",
@@ -45,15 +45,8 @@ export function buildPlan(impact: ImpactResult, options?: { passK?: number; extr
 	for (const layer of ["L0", "L1"] as const) {
 		if (layers.has(layer)) add(layer, { failures: impact.failures });
 	}
-	if (layers.has("L2") || layers.has("L3")) {
-		steps.push({
-			id: layers.has("L3") ? "L2-L3-omp-e2e" : "L2-omp-e2e",
-			layer: layers.has("L2") ? "L2" : "L3",
-			backend: BACKENDS.L2!,
-			oracle: "outcome",
-			failures: impact.failures,
-		});
-	}
+	if (layers.has("L2")) add("L2", { failures: impact.failures });
+	if (layers.has("L3")) add("L3", { failures: impact.failures });
 	if (layers.has("L4")) add("L4", { failures: impact.failures });
 	if (impact.nodesRequired) {
 		steps.push({

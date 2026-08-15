@@ -63,5 +63,9 @@ export function regressionAwareAccept(options: {
 		const prior = before.get(after.role);
 		if (prior) reasons.push(...loopRegressed(prior, after));
 	}
+	const beforeThickness = options.before?.scaffoldThickness ?? 0;
+	if (beforeThickness >= 2 && options.after.scaffoldThickness > beforeThickness) {
+		reasons.push("scaffold thickness increased");
+	}
 	return { accept: reasons.length === 0, reasons };
 }
