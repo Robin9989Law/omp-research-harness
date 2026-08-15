@@ -7,8 +7,9 @@
   `CONTRACT_FAIL`（thin-frontier）；多次 120s hub wait/abort 记过程空转
   `EFFICIENCY_REGRESSION`，不因此要求跳轴。overrun 仍只警告。
 - 增加仓内隔离的系统迭代测试框架（SIF，`sif/`）：按变更影响面编排 L0–L6，HTIR 区分消息与
-  lifecycle 完成，过程门检查角色的发现问题/优化任务/高效完成。日常 `bun run iterate`，
-  发布候选 `bun run certify`。连续 live-run 用 `iterate:ingest` 收口（进行中只允许
+  lifecycle 完成，过程门检查角色的发现问题/优化任务/高效完成。  `bun run sif` / `iterate` 默认一体化：先跑最便宜神谕探针（`evidence/probes/latest.json`），
+  HIT 只给调优参考、不锁认证账本、不注入研究会话；CLEAR 后自动 replay、跑完计划并
+  certify。`--watch` 跟随改动。连续 live-run 用 `iterate:ingest` 收口（进行中只允许
   `--snapshot`，不写 FAIL、不开 validator）。Codex forensics / rollout 用 `iterate:trace`
   只读评分，不能冒充 IPH live-run。过程门区分 M3 的 hub wait 与 specialist 的
   平台 pty；`session_exit` 挂起工具进入效率诊断。Replay 走 HarnessFix 回归感知接受

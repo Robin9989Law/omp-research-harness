@@ -3,15 +3,34 @@
 评测/进化 harness，不是科研运行时。不要从研究会话调用，不要打进 npm 插件包。
 
 ```text
-status        读 sif/iteration_state.json
-iterate       跑计划中的下一步（首错即停；干净树用 --base <branch> 评测已提交差）
-replay        从 STOP 步重放
+iterate       默认一体化：探针实测 → HIT 给调优参考 → CLEAR 后自动 replay/跑完计划/certify
+probe         只要探针（调试用）
+status        读 iteration_state + 最新探针卡
+replay        单独重放 STOP 步（一体化时会自动 replay）
 ingest        收口一场已结束（或 --snapshot）的连续研究会话
-trace         只读评分 Codex rollout / forensics 导出（不写账本，不能冒充 IPH live-run）
-flaws         归并账本 FAIL 为 HarnessFix 风格缺陷记录
-lock-bump     候选 IPH lock，不改 config/iph-lock.json
-certify       双门认证，不 push / 不 publish
+trace         只读评分 Codex rollout / forensics 导出
+flaws         归并账本 FAIL
+lock-bump     候选 IPH lock
+certify       单独双门认证（一体化时 CLEAR 后会自动 certify）
 ```
+
+一条命令同时做实测、调优参考和完整框架。不要从研究会话调用。
+
+```bash
+bun run sif -- --base main --ablation
+# 或
+bun run iterate -- --base main --ablation
+```
+
+HIT 时打印 `reference` / `anchors` / `suggestion` 后退出 2，按建议改完再跑同一条命令。CLEAR 后自动重放失败步、跑完 L0–L6、再 certify。跟随改动：
+
+```bash
+bun run sif -- --watch --interval 8 --base main --ablation
+```
+
+可选只读跟随研究根：`--research-root <path>`（snapshot，不开 validator）。
+旧的单步 iterate：`--step`。只要探针：`bun run iterate:probe`。
+`--no-probe` / `--no-certify` 拆开阶段（一般不用）。
 
 连续 live-run 不是 `test:models` 的隔离单边。会话停稳后再 ingest：
 
@@ -46,5 +65,5 @@ bun run iterate -- --ablation   # L6：H0–H3 + HarnessFix 四消融（无轨�
 
 - 合同：`schema.json` + `iteration_state.json`（gitignore）
 - 影响面：`impact.yml`
-- 证据：`evidence/index.json`（入库）与 `evidence/runs/`（gitignore）
+- 证据：`evidence/index.json`（认证入库）与 `evidence/runs/`、`evidence/probes/`（gitignore；探针 OBSERVE 不是 PASS/FAIL）
 - 被测产品仍在 `extensions/`、`agents/`、权威 IPH lock

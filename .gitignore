@@ -3,4 +3,5 @@ node_modules/
 *.log
 sif/iteration_state.json
 sif/evidence/runs/
+sif/evidence/probes/
 

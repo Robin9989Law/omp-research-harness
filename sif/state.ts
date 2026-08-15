@@ -20,6 +20,9 @@ export const STATE_FILE = path.join(SIF_ROOT, "iteration_state.json");
 export const IMPACT_FILE = path.join(SIF_ROOT, "impact.yml");
 export const LEDGER_FILE = path.join(SIF_ROOT, "evidence", "index.json");
 export const RUNS_DIR = path.join(SIF_ROOT, "evidence", "runs");
+export const PROBE_DIR = path.join(SIF_ROOT, "evidence", "probes");
+export const PROBE_LATEST_FILE = path.join(PROBE_DIR, "latest.json");
+export const PROBE_LOG_FILE = path.join(PROBE_DIR, "observations.jsonl");
 export const IPH_LOCK_FILE = path.join(PROJECT_ROOT, "config", "iph-lock.json");
 
 export function sha256(value: string | Uint8Array): string {

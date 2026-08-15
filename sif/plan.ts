@@ -22,10 +22,11 @@ export function impactSignature(impact: ImpactResult, files: string[]): string {
 	});
 }
 
-export function buildPlan(impact: ImpactResult, options?: { passK?: number }): { steps: PlanStep[]; deferred: Array<"L5" | "L6"> } {
+export function buildPlan(impact: ImpactResult, options?: { passK?: number; extraLayers?: Layer[] }): { steps: PlanStep[]; deferred: Array<"L5" | "L6"> } {
 	const steps: PlanStep[] = [];
 	const deferred: Array<"L5" | "L6"> = [];
 	const layers = new Set(impact.layers);
+	for (const layer of options?.extraLayers ?? []) layers.add(layer);
 	if (impact.unknownFiles.length > 0) {
 		for (const layer of ["L0", "L1", "L2", "L3", "L4"] as const) layers.add(layer);
 	}

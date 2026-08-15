@@ -26,6 +26,8 @@ import {
 } from "./state";
 import type { FailureClass, IterationState, PlanStep, RepairSpec } from "./types";
 import { SCHEMA_VERSION, SCORECARD_SCHEMA } from "./types";
+import { extraLayersFromProbe, loadLatestProbe, runProbe } from "./probe";
+import { runUnifiedSession } from "./session";
 import { workspaceSnapshot } from "./workspace";
 
 function option(name: string, argv = process.argv): string | undefined {
@@ -58,7 +60,7 @@ function failLedgerMeta(options: {
 	};
 }
 
-async function syncState(options?: { passK?: number; base?: string }): Promise<IterationState> {
+async function syncState(options?: { passK?: number; base?: string; fromProbes?: boolean }): Promise<IterationState> {
 	const workspace = workspaceSnapshot(PROJECT_ROOT, { base: options?.base });
 	const files = workspace.files;
 	const surfaces = await loadImpactSurfaces();
@@ -77,7 +79,8 @@ async function syncState(options?: { passK?: number; base?: string }): Promise<I
 			return existing;
 		}
 	}
-	const planned = buildPlan(impact, { passK: options?.passK ?? 2 });
+	const extraLayers = options?.fromProbes ? extraLayersFromProbe(await loadLatestProbe()) : [];
+	const planned = buildPlan(impact, { passK: options?.passK ?? 2, extraLayers });
 	const state: IterationState = {
 		schemaVersion: SCHEMA_VERSION,
 		scorecardSchema: SCORECARD_SCHEMA,
@@ -284,36 +287,12 @@ async function runStep(state: IterationState, step: PlanStep, mode: "RUN" | "REP
 	return state;
 }
 
-async function iterate(argv: string[]): Promise<void> {
-	const dryRun = flag("--dry-run", argv);
-	const state = await syncState({
-		passK: Number(option("--pass-k", argv) ?? "2"),
-		base: option("--base", argv),
-	});
-	if (dryRun) {
-		process.stdout.write(`${JSON.stringify({
-			sif: "DRY_RUN_READY",
-			next_required_action: state.next_required_action,
-			planId: state.planId,
-			steps: state.plan.steps.map(step => step.id),
-			unknownFiles: state.delta.unknownFiles ?? [],
-		}, null, 2)}\n`);
-		return;
-	}
-	if (state.next_required_action === "REPAIR") {
-		process.stdout.write(`${JSON.stringify({ sif: "STOP", next_required_action: "REPAIR", stop: state.stop }, null, 2)}\n`);
-		process.exitCode = 2;
-		return;
-	}
-	if (state.next_required_action === "CERTIFY" || state.next_required_action === "DONE") {
-		process.stdout.write(`${JSON.stringify({ sif: "READY", next_required_action: state.next_required_action }, null, 2)}\n`);
-		return;
-	}
+async function advanceOne(state: IterationState, argv: string[]): Promise<IterationState> {
 	const step = state.plan.steps[state.currentStepIndex];
 	if (!step) {
 		state.next_required_action = "CERTIFY";
 		await saveState(state);
-		return;
+		return state;
 	}
 	const key = reuseKey({
 		iphLock: state.iphLock,
@@ -326,21 +305,12 @@ async function iterate(argv: string[]): Promise<void> {
 		state.currentStepIndex += 1;
 		state.next_required_action = state.currentStepIndex >= state.plan.steps.length ? "CERTIFY" : "RUN_STEP";
 		await saveState(state);
-		process.stdout.write(`${JSON.stringify({ sif: "REUSED", step: step.id, reuseKey: key }, null, 2)}\n`);
-		return;
+		return state;
 	}
-	const after = await runStep(state, step, "RUN", argv);
-	process.stdout.write(`${JSON.stringify({
-		sif: after.next_required_action === "REPAIR" ? "STOP" : "READY",
-		next_required_action: after.next_required_action,
-		step: step.id,
-		outcomeClass: after.outcomeClass,
-		stop: after.stop,
-	}, null, 2)}\n`);
-	if (after.next_required_action === "REPAIR") process.exitCode = 2;
+	return runStep(state, step, "RUN", argv);
 }
 
-async function replay(argv: string[]): Promise<void> {
+async function replayState(argv: string[]): Promise<IterationState> {
 	const state = await loadState();
 	if (!state?.stop) throw new Error("no STOP to replay");
 	if (state.next_required_action !== "REPLAY" && state.next_required_action !== "REPAIR") {
@@ -362,13 +332,128 @@ async function replay(argv: string[]): Promise<void> {
 	state.next_required_action = "REPLAY";
 	const step = state.plan.steps.find(item => item.id === state.stop?.stepId);
 	if (!step) throw new Error("STOP step is missing from the plan");
-	const after = await runStep(state, step, "REPLAY", argv);
+	return runStep(state, step, "REPLAY", argv);
+}
+
+async function certifyNow(argv: string[]) {
+	const result = await certify({
+		requireRealModels: flag("--real-models", argv),
+		allowDirty: flag("--allow-dirty", argv),
+	});
+	if (result.ok) {
+		const state = await loadState();
+		if (state) {
+			state.next_required_action = "DONE";
+			await saveState(state);
+		}
+	}
+	return result;
+}
+
+async function iterateOneStep(argv: string[]): Promise<void> {
+	const dryRun = flag("--dry-run", argv);
+	const state = await syncState({
+		passK: Number(option("--pass-k", argv) ?? "2"),
+		base: option("--base", argv),
+		fromProbes: flag("--from-probes", argv),
+	});
+	if (dryRun) {
+		process.stdout.write(`${JSON.stringify({
+			sif: "DRY_RUN_READY",
+			next_required_action: state.next_required_action,
+			planId: state.planId,
+			steps: state.plan.steps.map(step => step.id),
+			unknownFiles: state.delta.unknownFiles ?? [],
+			probe: await loadLatestProbe(),
+		}, null, 2)}\n`);
+		return;
+	}
+	if (state.next_required_action === "REPAIR") {
+		process.stdout.write(`${JSON.stringify({ sif: "STOP", next_required_action: "REPAIR", stop: state.stop }, null, 2)}\n`);
+		process.exitCode = 2;
+		return;
+	}
+	if (state.next_required_action === "CERTIFY" || state.next_required_action === "DONE") {
+		process.stdout.write(`${JSON.stringify({ sif: "READY", next_required_action: state.next_required_action }, null, 2)}\n`);
+		return;
+	}
+	const step = state.plan.steps[state.currentStepIndex];
+	if (!step) {
+		state.next_required_action = "CERTIFY";
+		await saveState(state);
+		return;
+	}
+	const after = await advanceOne(state, argv);
+	process.stdout.write(`${JSON.stringify({
+		sif: after.next_required_action === "REPAIR" ? "STOP" : "READY",
+		next_required_action: after.next_required_action,
+		step: step.id,
+		outcomeClass: after.outcomeClass,
+		stop: after.stop,
+	}, null, 2)}\n`);
+	if (after.next_required_action === "REPAIR") process.exitCode = 2;
+}
+
+async function iterate(argv: string[]): Promise<void> {
+	if (flag("--step", argv)) return iterateOneStep(argv);
+	if (flag("--dry-run", argv)) return iterateOneStep(argv);
+	const events = await runUnifiedSession({
+		watch: flag("--watch", argv),
+		intervalMs: Math.max(2, Number(option("--interval", argv) ?? "8")) * 1000,
+		skipProbe: flag("--no-probe", argv),
+		skipCertify: flag("--no-certify", argv),
+		probe: () => runProbe({
+			base: option("--base", argv),
+			researchRoot: option("--research-root", argv),
+			force: flag("--force", argv),
+		}),
+		loadFramework: () => syncState({
+			passK: Number(option("--pass-k", argv) ?? "2"),
+			base: option("--base", argv),
+			fromProbes: !flag("--no-from-probes", argv),
+		}),
+		replay: () => replayState(argv),
+		advance: state => advanceOne(state, argv),
+		certify: () => certifyNow(argv),
+		emit: event => {
+			process.stdout.write(`${JSON.stringify(event, null, 2)}\n`);
+		},
+	});
+	const last = events.at(-1);
+	if (last?.action === "tune" || (last?.certify && !last.certify.ok)) process.exitCode = 2;
+}
+
+async function replay(argv: string[]): Promise<void> {
+	const after = await replayState(argv);
 	process.stdout.write(`${JSON.stringify({
 		sif: after.next_required_action === "REPAIR" ? "STOP" : "READY",
 		next_required_action: after.next_required_action,
 		outcomeClass: after.outcomeClass,
 	}, null, 2)}\n`);
 	if (after.next_required_action === "REPAIR") process.exitCode = 2;
+}
+
+async function probeCommand(argv: string[]): Promise<void> {
+	const watch = flag("--watch", argv);
+	const intervalMs = Math.max(2, Number(option("--interval", argv) ?? "8")) * 1000;
+	const runOnce = async () => runProbe({
+		base: option("--base", argv),
+		researchRoot: option("--research-root", argv),
+		force: flag("--force", argv),
+	});
+	let previousAt: string | undefined;
+	do {
+		const card = await runOnce();
+		if (card.at !== previousAt) {
+			process.stdout.write(`${JSON.stringify(card, null, 2)}\n`);
+			previousAt = card.at;
+		}
+		if (!watch) {
+			if (card.status === "HIT") process.exitCode = 2;
+			return;
+		}
+		await Bun.sleep(intervalMs);
+	} while (watch);
 }
 
 async function status(): Promise<void> {
@@ -387,11 +472,13 @@ async function status(): Promise<void> {
 		stop: state.stop,
 		dirty: state.workingTreeDirty,
 		liveContinuous: live ? { id: live.id, kind: live.kind, at: live.at, failureClass: live.failureClass ?? null } : null,
+		probe: await loadLatestProbe() ?? null,
 	}, null, 2)}\n`);
 }
 
 async function main(): Promise<void> {
 	const command = process.argv[2];
+	if (!command || command.startsWith("--")) return iterate(process.argv);
 	if (command === "status") return status();
 	if (command === "ingest") {
 		const researchRoot = option("--research-root");
@@ -409,6 +496,7 @@ async function main(): Promise<void> {
 		return;
 	}
 	if (command === "iterate") return iterate(process.argv);
+	if (command === "probe") return probeCommand(process.argv);
 	if (command === "replay") return replay(process.argv);
 	if (command === "lock-bump") {
 		const commit = option("--commit");
@@ -419,16 +507,9 @@ async function main(): Promise<void> {
 		return;
 	}
 	if (command === "certify") {
-		const result = await certify({ requireRealModels: flag("--real-models"), allowDirty: flag("--allow-dirty") });
+		const result = await certifyNow(process.argv);
 		process.stdout.write(`${JSON.stringify({ sif: result.ok ? "DONE" : "STOP", ...result, publish: "not_run" }, null, 2)}\n`);
 		if (!result.ok) process.exitCode = 1;
-		else {
-			const state = await loadState();
-			if (state) {
-				state.next_required_action = "DONE";
-				await saveState(state);
-			}
-		}
 		return;
 	}
 	if (command === "trace") {
@@ -459,7 +540,7 @@ async function main(): Promise<void> {
 		process.stdout.write(`${JSON.stringify({ sif: "FLAWS", count: flaws.length, flaws }, null, 2)}\n`);
 		return;
 	}
-	throw new Error("usage: bun sif/cli.ts status|iterate|replay|ingest|trace|flaws|lock-bump|certify");
+	throw new Error("usage: bun sif/cli.ts [iterate] |probe|status|replay|ingest|trace|flaws|lock-bump|certify");
 }
 
 await main();

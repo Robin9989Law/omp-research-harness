@@ -1150,6 +1150,229 @@ describe("live ingest", () => {
 	});
 });
 
+describe("SIF probe", () => {
+	test("impact layers pick the cheapest oracles and skip L4–L6", async () => {
+		const { probeOraclesForImpact } = await import("./probe");
+		expect(probeOraclesForImpact({
+			layers: ["L0"],
+			nodes: [],
+			failures: [],
+			ablation: false,
+			classes: ["sif"],
+			nodesRequired: false,
+			unknownFiles: [],
+		})).toEqual(["typecheck"]);
+		expect(probeOraclesForImpact({
+			layers: ["L0", "L1", "L2", "L4", "L5", "L6"],
+			nodes: [3],
+			failures: [],
+			ablation: true,
+			classes: ["control-plane"],
+			nodesRequired: false,
+			unknownFiles: [],
+		})).toEqual(["typecheck", "bun-test", "omp-e2e"]);
+	});
+
+	test("HIT writes OBSERVE with CES advice and does not append the certify ledger", async () => {
+		const { runProbe } = await import("./probe");
+		const { loadLedger } = await import("./ledger");
+		const before = (await loadLedger()).records.length;
+		const root = await mkdtemp(path.join(tmpdir(), "sif-probe-"));
+		try {
+			const latestFile = path.join(root, "latest.json");
+			const logFile = path.join(root, "observations.jsonl");
+			const card = await runProbe({
+				files: ["extensions/iph.ts"],
+				force: true,
+				latestFile,
+				logFile,
+				execOracle: async oracle => {
+					if (oracle !== "omp-e2e") return { ok: true, output: `${oracle}=ok\n`, exitCode: 0 };
+					return {
+						ok: false,
+						exitCode: 1,
+						output: "Error: mutable artifact rejection omitted the recovery diagnosis\nmust not be frozen\n",
+					};
+				},
+			});
+			expect(card.sif).toBe("PROBE");
+			expect(card.kind).toBe("OBSERVE");
+			expect(card.status).toBe("HIT");
+			expect(card.oracle).toBe("omp-e2e");
+			expect(card.certify).toBeFalse();
+			expect(card.injectIntoResearchSession).toBeFalse();
+			expect(card.anchors).toContain("extensions/iph.ts");
+			expect(card.reference).toContain("strengthen_validator_gate");
+			expect(card.suggestion).toBeTruthy();
+			expect(JSON.parse(await readFile(latestFile, "utf8")).status).toBe("HIT");
+			expect((await loadLedger()).records.length).toBe(before);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("CLEAR and STALE are tuner signals, not certify PASS/FAIL", async () => {
+		const { extraLayersFromProbe, runProbe, staleProbeCard } = await import("./probe");
+		const { buildPlan } = await import("./plan");
+		const root = await mkdtemp(path.join(tmpdir(), "sif-probe-clear-"));
+		try {
+			const latestFile = path.join(root, "latest.json");
+			const logFile = path.join(root, "observations.jsonl");
+			const clear = await runProbe({
+				files: ["docs/DEBUG_TUNING_HANDOFF_2026-08-14.md"],
+				force: true,
+				latestFile,
+				logFile,
+				execOracle: async () => ({ ok: true, output: "ok\n", exitCode: 0 }),
+			});
+			expect(clear.status).toBe("CLEAR");
+			expect(clear.reference).toContain("full iterate");
+			expect(extraLayersFromProbe(clear)).toEqual([]);
+			const stale = staleProbeCard(clear, "new-sig", ["extensions/iph.ts"]);
+			expect(stale?.status).toBe("STALE");
+			expect(stale?.reference).toContain("stale");
+			const hit = {
+				...clear,
+				status: "HIT" as const,
+				repairSpec: {
+					operator: "strengthen_validator_gate",
+					layer: "Verification" as const,
+					anchors: ["extensions/iph.ts"],
+					regressionSet: ["L0", "L1", "L2"],
+					concern: "x",
+					evidence: "y",
+					suggestion: "z",
+				},
+			};
+			const planned = buildPlan({
+				layers: ["L0"],
+				nodes: [],
+				failures: [],
+				ablation: false,
+				classes: ["sif"],
+				nodesRequired: false,
+				unknownFiles: [],
+			}, { extraLayers: extraLayersFromProbe(hit) });
+			expect(planned.steps.some(step => step.backend === "omp-e2e")).toBeTrue();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("unified session tunes on HIT and promotes CLEAR to framework then certify", async () => {
+		const { nextSessionAction, runUnifiedSession } = await import("./session");
+		expect(nextSessionAction({ probe: { status: "HIT", deltaSignature: "a" } })).toBe("tune");
+		expect(nextSessionAction({ probe: { status: "STALE", deltaSignature: "a" } })).toBe("probe");
+		expect(nextSessionAction({
+			probe: { status: "CLEAR", deltaSignature: "a" },
+			framework: { next_required_action: "RUN_STEP" },
+		})).toBe("framework");
+		expect(nextSessionAction({
+			probe: { status: "CLEAR", deltaSignature: "a" },
+			framework: { next_required_action: "REPAIR" },
+		})).toBe("replay");
+		expect(nextSessionAction({
+			probe: { status: "CLEAR", deltaSignature: "a" },
+			framework: { next_required_action: "CERTIFY" },
+		})).toBe("certify");
+		expect(nextSessionAction({
+			probe: { status: "CLEAR", deltaSignature: "a" },
+			framework: { next_required_action: "DONE" },
+			certifiedSignature: "a",
+		})).toBe("done");
+
+		const calls: string[] = [];
+		const hit = await runUnifiedSession({
+			probe: async () => ({
+				sif: "PROBE",
+				kind: "OBSERVE",
+				status: "HIT",
+				at: "t",
+				oracle: "omp-e2e",
+				oraclesRun: ["omp-e2e"],
+				deltaSignature: "sig",
+				files: ["extensions/iph.ts"],
+				certify: false,
+				injectIntoResearchSession: false,
+				reference: "fix iph.ts",
+			}),
+			loadFramework: async () => {
+				calls.push("load");
+				return { next_required_action: "RUN_STEP" } as import("./types").IterationState;
+			},
+			replay: async () => {
+				calls.push("replay");
+				return { next_required_action: "RUN_STEP" } as import("./types").IterationState;
+			},
+			advance: async state => {
+				calls.push("advance");
+				return state;
+			},
+			certify: async () => {
+				calls.push("certify");
+				return { ok: true, action: "DONE", issues: [] };
+			},
+		});
+		expect(hit.map(event => event.action)).toEqual(["tune"]);
+		expect(calls).toEqual([]);
+
+		let step = 0;
+		const clear = await runUnifiedSession({
+			probe: async () => ({
+				sif: "PROBE",
+				kind: "OBSERVE",
+				status: "CLEAR",
+				at: "t",
+				oracle: "omp-e2e",
+				oraclesRun: ["typecheck"],
+				deltaSignature: "sig",
+				files: ["sif/cli.ts"],
+				certify: false,
+				injectIntoResearchSession: false,
+				reference: "oracles clear",
+			}),
+			loadFramework: async () => ({
+				next_required_action: "RUN_STEP",
+				currentStepIndex: step,
+				plan: { steps: [{ id: "L0-typecheck+system-matrix" }, { id: "L1-bun-test" }] },
+			} as import("./types").IterationState),
+			replay: async () => {
+				calls.push("replay-clear");
+				return { next_required_action: "RUN_STEP" } as import("./types").IterationState;
+			},
+			advance: async state => {
+				calls.push(`advance-${state.plan.steps[state.currentStepIndex]?.id}`);
+				step += 1;
+				return {
+					...state,
+					currentStepIndex: step,
+					next_required_action: step >= state.plan.steps.length ? "CERTIFY" : "RUN_STEP",
+				} as import("./types").IterationState;
+			},
+			certify: async () => {
+				calls.push("certify");
+				return { ok: true, action: "DONE", issues: [] };
+			},
+		});
+		expect(clear.some(event => event.action === "framework")).toBeTrue();
+		expect(clear.at(-1)?.action).toBe("done");
+		expect(calls).toEqual([
+			"advance-L0-typecheck+system-matrix",
+			"advance-L1-bun-test",
+			"certify",
+		]);
+	});
+
+	test("live snapshot hub-wait becomes a probe HIT without writing ledger FAIL", async () => {
+		const { snapshotProbeHit } = await import("./probe");
+		const hit = snapshotProbeHit({
+			processIssue: "M3 polled specialist with hub wait instead of task lifecycle",
+		});
+		expect(hit.hit).toBeTrue();
+		expect(hit.failureClass).toBe("ELICITATION_REGRESSION");
+	});
+});
+
 describe("SIF isolation", () => {
 	test("committed delta vs main includes sif/", async () => {
 		const { committedDelta } = await import("./workspace");
@@ -1161,10 +1384,12 @@ describe("SIF isolation", () => {
 	test("the published package files list does not include sif/", async () => {
 		const pkg = JSON.parse(await readFile(path.resolve(import.meta.dir, "..", "package.json"), "utf8"));
 		expect(pkg.files).not.toContain("sif");
+		expect(pkg.scripts.sif).toBe("bun sif/cli.ts");
 		expect(pkg.scripts.iterate).toBe("bun sif/cli.ts iterate");
 		expect(pkg.scripts["iterate:ingest"]).toBe("bun sif/cli.ts ingest");
 		expect(pkg.scripts["iterate:trace"]).toBe("bun sif/cli.ts trace");
 		expect(pkg.scripts["iterate:flaws"]).toBe("bun sif/cli.ts flaws");
+		expect(pkg.scripts["iterate:probe"]).toBe("bun sif/cli.ts probe");
 		expect(pkg.scripts.certify).toBe("bun sif/cli.ts certify");
 	});
 });
