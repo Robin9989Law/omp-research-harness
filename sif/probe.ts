@@ -3,7 +3,6 @@ import * as path from "node:path";
 import { classifyFiles, loadImpactSurfaces } from "./impact";
 import { ingestLiveRun, type IngestReport } from "./ingest";
 import { attachFlawId, evolutionFromRepair } from "./flaws";
-import { impactSignature } from "./plan";
 import { attributeFailure } from "./repair";
 import { cesComplete } from "./ces";
 import {
@@ -11,13 +10,12 @@ import {
 	PROBE_LATEST_FILE,
 	PROBE_LOG_FILE,
 	PROJECT_ROOT,
-	sha256,
 } from "./state";
 import type { FailureClass, ImpactResult, Layer, RepairSpec } from "./types";
 import { LAYERS } from "./types";
-import { workspaceSnapshot } from "./workspace";
+import { evaluationSignature, workspaceSnapshot } from "./workspace";
 
-export const PROBE_ORACLES = ["typecheck", "bun-test", "omp-e2e", "snapshot"] as const;
+export const PROBE_ORACLES = ["typecheck", "system-matrix", "bun-test", "omp-e2e", "snapshot"] as const;
 export type ProbeOracle = (typeof PROBE_ORACLES)[number];
 export type ProbeStatus = "HIT" | "CLEAR" | "STALE";
 
@@ -40,6 +38,7 @@ export interface ProbeCard {
 	evidence?: string;
 	suggestion?: string;
 	reference: string;
+	emptyDelta?: boolean;
 }
 
 export interface OracleResult {
@@ -50,21 +49,53 @@ export interface OracleResult {
 
 const ORACLE_COMMANDS: Record<Exclude<ProbeOracle, "snapshot">, string[][]> = {
 	typecheck: [["bun", "run", "typecheck"]],
+	"system-matrix": [["bun", "run", "test:system"]],
 	"bun-test": [["bun", "test"]],
 	"omp-e2e": [["bun", "run", "test:omp"]],
 };
 
 export function probeOraclesForImpact(impact: ImpactResult): Exclude<ProbeOracle, "snapshot">[] {
 	const oracles: Exclude<ProbeOracle, "snapshot">[] = [];
-	if (impact.layers.includes("L0")) oracles.push("typecheck");
+	if (impact.layers.includes("L0")) {
+		oracles.push("typecheck");
+		oracles.push("system-matrix");
+	}
 	if (impact.layers.includes("L1")) oracles.push("bun-test");
 	if (impact.layers.includes("L2") || impact.layers.includes("L3")) oracles.push("omp-e2e");
 	return oracles;
 }
 
+export function layersFromRepairSpec(spec: Pick<RepairSpec, "regressionSet"> | null | undefined): Layer[] {
+	if (!spec) return [];
+	return spec.regressionSet.filter((item): item is Layer => (LAYERS as readonly string[]).includes(item));
+}
+
 export function extraLayersFromProbe(card: ProbeCard | undefined): Layer[] {
-	if (card?.status !== "HIT" || !card.repairSpec) return [];
-	return card.repairSpec.regressionSet.filter((item): item is Layer => (LAYERS as readonly string[]).includes(item));
+	if (card?.status !== "HIT") return [];
+	return layersFromRepairSpec(card.repairSpec);
+}
+
+export async function extraLayersFromLastHit(logFile = PROBE_LOG_FILE): Promise<Layer[]> {
+	try {
+		const lines = (await readFile(logFile, "utf8")).trim().split("\n").reverse();
+		for (const line of lines) {
+			if (!line.trim()) continue;
+			const card = JSON.parse(line) as ProbeCard;
+			if (card.status === "HIT" && card.repairSpec) return layersFromRepairSpec(card.repairSpec);
+		}
+		return [];
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw error;
+	}
+}
+
+export function anchorsFromOracleOutput(output: string, fallback: string[]): string[] {
+	const hits = [...output.matchAll(/\b((?:extensions|sif|agents|tests|scripts|commands)\/[\w./-]+\.(?:ts|md|yml))/g)]
+		.map(match => match[1])
+		.filter((item): item is string => Boolean(item));
+	const unique = [...new Set(hits)];
+	return unique.length > 0 ? unique.slice(0, 4) : fallback;
 }
 
 export function staleProbeCard(previous: ProbeCard, currentSignature: string, files: string[]): ProbeCard | undefined {
@@ -119,6 +150,7 @@ function cardFromSpec(options: {
 	files: string[];
 	repairSpec?: RepairSpec;
 	failureClass?: FailureClass;
+	emptyDelta?: boolean;
 }): ProbeCard {
 	const spec = options.repairSpec;
 	const evolution = spec ? evolutionFromRepair(spec) : undefined;
@@ -149,11 +181,14 @@ function cardFromSpec(options: {
 		concern: spec?.concern,
 		evidence: spec?.evidence,
 		suggestion: spec?.suggestion,
+		emptyDelta: options.emptyDelta,
 		reference: spec
 			? tunerReference(spec)
-			: options.status === "CLEAR"
-				? "Cheapest matching oracles are clear. Keep tuning; run full iterate after the tree is stable."
-				: "Probe observation only. Not a certify result.",
+			: options.emptyDelta
+				? "No harness delta against the evaluation base. Wait for a local change, or pass --base explicitly."
+				: options.status === "CLEAR"
+					? "Cheapest matching oracles are clear. Keep tuning; run full iterate after the tree is stable."
+					: "Probe observation only. Not a certify result.",
 	};
 }
 
@@ -208,10 +243,16 @@ export async function runProbe(options?: {
 	logFile?: string;
 }): Promise<ProbeCard> {
 	const cwd = options?.cwd ?? PROJECT_ROOT;
+	if (options?.researchRoot) {
+		const resolved = path.resolve(options.researchRoot);
+		if (resolved === path.resolve(cwd) || resolved === path.resolve(PROJECT_ROOT)) {
+			throw new Error("research-root must not be the harness checkout; pass a live-run snapshot directory.");
+		}
+	}
 	const files = options?.files ?? workspaceSnapshot(cwd, { base: options?.base }).files;
 	const surfaces = await loadImpactSurfaces();
 	const impact = classifyFiles(files, surfaces);
-	const signature = sha256(impactSignature(impact, files));
+	const signature = evaluationSignature(impact, files, cwd);
 	const previous = await loadLatestProbe(options?.latestFile);
 	if (previous && previous.deltaSignature === signature && previous.status !== "STALE" && !options?.force) {
 		return previous;
@@ -221,6 +262,17 @@ export async function runProbe(options?: {
 			latestFile: options?.latestFile,
 			logFile: options?.logFile,
 		});
+	}
+
+	if (files.length === 0) {
+		return writeProbeCard(cardFromSpec({
+			status: "CLEAR",
+			oracle: "none",
+			oraclesRun: [],
+			deltaSignature: signature,
+			files,
+			emptyDelta: true,
+		}), { latestFile: options?.latestFile, logFile: options?.logFile });
 	}
 
 	const oracles = probeOraclesForImpact(impact);
@@ -242,7 +294,7 @@ export async function runProbe(options?: {
 		const repairSpec = attributeFailure({
 			failureClass,
 			message: result.output.slice(-2000),
-			anchors: anchorsFromDelta.length > 0 ? anchorsFromDelta : undefined,
+			anchors: anchorsFromOracleOutput(result.output, anchorsFromDelta),
 		});
 		return writeProbeCard(cardFromSpec({
 			status: "HIT",

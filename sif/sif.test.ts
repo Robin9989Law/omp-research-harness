@@ -1161,7 +1161,7 @@ describe("SIF probe", () => {
 			classes: ["sif"],
 			nodesRequired: false,
 			unknownFiles: [],
-		})).toEqual(["typecheck"]);
+		})).toEqual(["typecheck", "system-matrix"]);
 		expect(probeOraclesForImpact({
 			layers: ["L0", "L1", "L2", "L4", "L5", "L6"],
 			nodes: [3],
@@ -1170,7 +1170,7 @@ describe("SIF probe", () => {
 			classes: ["control-plane"],
 			nodesRequired: false,
 			unknownFiles: [],
-		})).toEqual(["typecheck", "bun-test", "omp-e2e"]);
+		})).toEqual(["typecheck", "system-matrix", "bun-test", "omp-e2e"]);
 	});
 
 	test("HIT writes OBSERVE with CES advice and does not append the certify ledger", async () => {
@@ -1277,6 +1277,14 @@ describe("SIF probe", () => {
 		})).toBe("certify");
 		expect(nextSessionAction({
 			probe: { status: "CLEAR", deltaSignature: "a" },
+			framework: { next_required_action: "CERTIFY", workingTreeDirty: true },
+		})).toBe("commit");
+		expect(nextSessionAction({
+			probe: { status: "CLEAR", deltaSignature: "a", emptyDelta: true },
+			framework: { next_required_action: "CERTIFY" },
+		})).toBe("wait");
+		expect(nextSessionAction({
+			probe: { status: "CLEAR", deltaSignature: "a" },
 			framework: { next_required_action: "DONE" },
 			certifiedSignature: "a",
 		})).toBe("done");
@@ -1361,6 +1369,219 @@ describe("SIF probe", () => {
 			"advance-L1-bun-test",
 			"certify",
 		]);
+
+		const dirtyCalls: string[] = [];
+		const dirty = await runUnifiedSession({
+			probe: async () => ({
+				sif: "PROBE",
+				kind: "OBSERVE",
+				status: "CLEAR",
+				at: "t",
+				oracle: "typecheck",
+				oraclesRun: ["typecheck"],
+				deltaSignature: "sig",
+				files: ["sif/cli.ts"],
+				certify: false,
+				injectIntoResearchSession: false,
+				reference: "oracles clear",
+			}),
+			loadFramework: async () => ({
+				next_required_action: "CERTIFY",
+				workingTreeDirty: true,
+				plan: { steps: [] },
+			} as unknown as import("./types").IterationState),
+			replay: async () => ({ next_required_action: "CERTIFY" } as import("./types").IterationState),
+			advance: async state => state,
+			certify: async () => {
+				dirtyCalls.push("certify");
+				return { ok: true, action: "DONE", issues: [] };
+			},
+		});
+		expect(dirty.map(event => event.action)).toEqual(["probe", "commit"]);
+		expect(dirtyCalls).toEqual([]);
+
+		let dirtyLoads = 0;
+		const autoCommitted = await runUnifiedSession({
+			probe: async () => ({
+				sif: "PROBE",
+				kind: "OBSERVE",
+				status: "CLEAR",
+				at: "t",
+				oracle: "typecheck",
+				oraclesRun: ["typecheck"],
+				deltaSignature: "sig",
+				files: ["sif/cli.ts"],
+				certify: false,
+				injectIntoResearchSession: false,
+				reference: "oracles clear",
+			}),
+			loadFramework: async () => {
+				dirtyLoads += 1;
+				return {
+					next_required_action: "CERTIFY",
+					workingTreeDirty: dirtyLoads === 1,
+					plan: { steps: [] },
+				} as unknown as import("./types").IterationState;
+			},
+			replay: async () => ({ next_required_action: "CERTIFY" } as import("./types").IterationState),
+			advance: async state => state,
+			commit: async () => ({ ok: true, sha: "a".repeat(40), files: ["sif/cli.ts"], issues: [] }),
+			certify: async () => {
+				dirtyCalls.push("certify-after-commit");
+				return { ok: true, action: "DONE", issues: [] };
+			},
+		});
+		expect(autoCommitted.map(event => event.action)).toEqual(["probe", "commit", "done"]);
+		expect(dirtyCalls).toEqual(["certify-after-commit"]);
+
+		const emptyCalls: string[] = [];
+		const empty = await runUnifiedSession({
+			probe: async () => ({
+				sif: "PROBE",
+				kind: "OBSERVE",
+				status: "CLEAR",
+				at: "t",
+				oracle: "none",
+				oraclesRun: [],
+				deltaSignature: "empty",
+				files: [],
+				emptyDelta: true,
+				certify: false,
+				injectIntoResearchSession: false,
+				reference: "No harness delta",
+			}),
+			loadFramework: async () => {
+				emptyCalls.push("load");
+				return { next_required_action: "CERTIFY" } as import("./types").IterationState;
+			},
+			replay: async () => ({ next_required_action: "CERTIFY" } as import("./types").IterationState),
+			advance: async state => state,
+			certify: async () => {
+				emptyCalls.push("certify-empty");
+				return { ok: true, action: "DONE", issues: [] };
+			},
+		});
+		expect(empty.map(event => event.action)).toEqual(["wait"]);
+		expect(emptyCalls).toEqual([]);
+	});
+
+	test("content-sensitive signature and last HIT seed extra layers", async () => {
+		const { anchorsFromOracleOutput, extraLayersFromLastHit, runProbe } = await import("./probe");
+		const { defaultEvalBase, evaluationSignature } = await import("./workspace");
+		const { formatSessionLine } = await import("./session");
+		const { PROJECT_ROOT } = await import("./state");
+		const impact = {
+			layers: ["L0"] as import("./types").Layer[],
+			nodes: [],
+			failures: [],
+			ablation: false,
+			classes: ["sif"] as import("./types").DeltaClass[],
+			nodesRequired: false,
+			unknownFiles: [],
+		};
+		const root = await mkdtemp(path.join(tmpdir(), "sif-sig-"));
+		try {
+			const file = path.join(root, "iph.ts");
+			await writeFile(file, "const a = 1;\n");
+			const first = evaluationSignature(impact, ["iph.ts"], root);
+			await writeFile(file, "const a = 2;\n");
+			const second = evaluationSignature(impact, ["iph.ts"], root);
+			expect(first).not.toBe(second);
+
+			const latestFile = path.join(root, "latest.json");
+			const logFile = path.join(root, "observations.jsonl");
+			const oracles: string[] = [];
+			await mkdir(path.join(root, "docs"), { recursive: true });
+			const probeFile = path.join(root, "docs/note.md");
+			await writeFile(probeFile, "v1\n");
+			const cached = await runProbe({
+				cwd: root,
+				files: ["docs/note.md"],
+				latestFile,
+				logFile,
+				execOracle: async oracle => {
+					oracles.push(oracle);
+					return { ok: true, output: `${oracle}=ok\n`, exitCode: 0 };
+				},
+			});
+			const reused = await runProbe({
+				cwd: root,
+				files: ["docs/note.md"],
+				latestFile,
+				logFile,
+				execOracle: async oracle => {
+					oracles.push(`rerun-${oracle}`);
+					return { ok: true, output: `${oracle}=ok\n`, exitCode: 0 };
+				},
+			});
+			expect(reused.at).toBe(cached.at);
+			await writeFile(probeFile, "v2\n");
+			await runProbe({
+				cwd: root,
+				files: ["docs/note.md"],
+				latestFile,
+				logFile,
+				execOracle: async oracle => {
+					oracles.push(`changed-${oracle}`);
+					return { ok: true, output: `${oracle}=ok\n`, exitCode: 0 };
+				},
+			});
+			expect(oracles.some(item => item.startsWith("changed-"))).toBeTrue();
+
+			await writeFile(logFile, `${JSON.stringify({
+				status: "CLEAR",
+				repairSpec: { regressionSet: ["L6"] },
+			})}\n${JSON.stringify({
+				status: "HIT",
+				repairSpec: { regressionSet: ["L0", "L2"] },
+			})}\n${JSON.stringify({
+				status: "CLEAR",
+				repairSpec: null,
+			})}\n`);
+			expect(await extraLayersFromLastHit(logFile)).toEqual(["L0", "L2"]);
+			expect(anchorsFromOracleOutput(
+				"    at run (/repo/extensions/iph.ts:12:3)\nfail tests/iph.test.ts:9",
+				["sif/cli.ts"],
+			)).toEqual(["extensions/iph.ts", "tests/iph.test.ts"]);
+			expect(defaultEvalBase({ branch: "sif", hasMain: true })).toBe("main");
+			expect(defaultEvalBase({ branch: "main", hasMain: true })).toBeUndefined();
+			expect(defaultEvalBase({ explicit: "HEAD~1", branch: "sif", hasMain: true })).toBe("HEAD~1");
+			const { classifyCommitFiles, autoCommitHarness } = await import("./workspace");
+			expect(classifyCommitFiles(["sif/cli.ts", ".env", "notes.bin"])).toEqual({
+				allowed: ["sif/cli.ts"],
+				blocked: [".env", "notes.bin"],
+			});
+			const gitArgs: string[][] = [];
+			const auto = autoCommitHarness({
+				files: ["sif/cli.ts", ".env"],
+				exec: args => {
+					gitArgs.push(args);
+					if (args[0] === "rev-parse") return { ok: true, output: "b".repeat(40) };
+					return { ok: true, output: "" };
+				},
+			});
+			expect(auto.ok).toBeFalse();
+			expect(auto.sha).toBe("b".repeat(40));
+			expect(auto.issues[0]).toContain(".env");
+			expect(gitArgs[0]).toEqual(["add", "--", "sif/cli.ts"]);
+			expect(gitArgs[1]?.[0]).toBe("commit");
+			expect(formatSessionLine({
+				sif: "SESSION",
+				action: "commit",
+				phase: "CERTIFY",
+				reference: "git commit then rerun",
+			})).toContain("SESSION commit");
+			await expect(runProbe({
+				researchRoot: PROJECT_ROOT,
+				files: ["sif/cli.ts"],
+				force: true,
+				latestFile,
+				logFile,
+				execOracle: async () => ({ ok: true, output: "ok\n", exitCode: 0 }),
+			})).rejects.toThrow(/harness checkout/);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 
 	test("live snapshot hub-wait becomes a probe HIT without writing ledger FAIL", async () => {

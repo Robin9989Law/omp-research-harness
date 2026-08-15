@@ -14,22 +14,20 @@ lock-bump     候选 IPH lock
 certify       单独双门认证（一体化时 CLEAR 后会自动 certify）
 ```
 
-一条命令同时做实测、调优参考和完整框架。不要从研究会话调用。
+一条命令同时做实测、调优参考和完整框架。不要从研究会话调用。两条轨道分开：开发轨改 harness 并跑 SIF；科研轨只读 snapshot，HIT 送到开发轨，不写 `iph_status`。
 
 ```bash
-bun run sif -- --base main --ablation
-# 或
-bun run iterate -- --base main --ablation
+# 在 sif 等非 main 分支：默认 --base main
+bun run sif -- --ablation
+# 在 main 上边开发边测：只跟工作区差集，空差集 wait，不清空转 L0–L6
+bun run sif -- --watch --ablation
 ```
 
-HIT 时打印 `reference` / `anchors` / `suggestion` 后退出 2，按建议改完再跑同一条命令。CLEAR 后自动重放失败步、跑完 L0–L6、再 certify。跟随改动：
+HIT 时打印一行 `SESSION tune`（`--json` 出整卡），退出 2，按建议改完再跑同一条命令。CLEAR 后自动重放失败步、跑完 L0–L6。脏树默认自动 `git commit` 安全 harness 差集，然后 certify；密钥/仓外文件不入提交。`--no-auto-commit` 才停在 `SESSION commit`。`--watch` 对同一内容签名的失败 certify 只报一次。
 
-```bash
-bun run sif -- --watch --interval 8 --base main --ablation
-```
-
-可选只读跟随研究根：`--research-root <path>`（snapshot，不开 validator）。
+可选只读跟随研究根：`--research-root <path>`（必须是 live-run 快照目录，不能是仓根；snapshot，不开 validator）。
 旧的单步 iterate：`--step`。只要探针：`bun run iterate:probe`。
+显式基线：`--base main` 或 `SIF_BASE=main`。`--allow-dirty` 才允许脏树 certify。`--no-auto-commit` 关闭自动提交。
 `--no-probe` / `--no-certify` 拆开阶段（一般不用）。
 
 连续 live-run 不是 `test:models` 的隔离单边。会话停稳后再 ingest：

@@ -8,8 +8,12 @@
   `EFFICIENCY_REGRESSION`，不因此要求跳轴。overrun 仍只警告。
 - 增加仓内隔离的系统迭代测试框架（SIF，`sif/`）：按变更影响面编排 L0–L6，HTIR 区分消息与
   lifecycle 完成，过程门检查角色的发现问题/优化任务/高效完成。  `bun run sif` / `iterate` 默认一体化：先跑最便宜神谕探针（`evidence/probes/latest.json`），
-  HIT 只给调优参考、不锁认证账本、不注入研究会话；CLEAR 后自动 replay、跑完计划并
-  certify。`--watch` 跟随改动。连续 live-run 用 `iterate:ingest` 收口（进行中只允许
+  HIT 只给调优参考、不锁认证账本、不注入研究会话；CLEAR 后自动 replay、跑完计划。
+  探针与计划签名对 dirty 文件做内容摘要，改已有文件会重跑神谕。脏树默认自动
+  commit 安全 harness 差集后再 certify（`--no-auto-commit` 才停在 COMMIT）；空差集
+  wait。非 main 默认 `--base main`，main 上只跟工作区差集。
+  探针 L0 含 typecheck+system-matrix；框架 extraLayers 取 observations.jsonl 最近 HIT。
+  默认一行 SESSION 摘要，`--json` 出全事件。`--watch` 跟随改动。连续 live-run 用 `iterate:ingest` 收口（进行中只允许
   `--snapshot`，不写 FAIL、不开 validator）。Codex forensics / rollout 用 `iterate:trace`
   只读评分，不能冒充 IPH live-run。过程门区分 M3 的 hub wait 与 specialist 的
   平台 pty；`session_exit` 挂起工具进入效率诊断。Replay 走 HarnessFix 回归感知接受

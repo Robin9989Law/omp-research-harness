@@ -10,7 +10,7 @@ import { classifyFiles, loadImpactSurfaces } from "./impact";
 import { appendLedger, artifactHash, findReusablePass, loadLedger, reuseKey } from "./ledger";
 import { attachFlawId, consolidateFlaws, evolutionFromRepair } from "./flaws";
 import { lockBump } from "./lock-bump";
-import { buildPlan, impactSignature } from "./plan";
+import { buildPlan } from "./plan";
 import { attributeFailure } from "./repair";
 import { elicitationRegression, outcomeClassFor, scoreHtir } from "./scorecard";
 import {
@@ -22,13 +22,12 @@ import {
 	loadState,
 	markExecuted,
 	saveState,
-	sha256,
 } from "./state";
 import type { FailureClass, IterationState, PlanStep, RepairSpec } from "./types";
 import { SCHEMA_VERSION, SCORECARD_SCHEMA } from "./types";
-import { extraLayersFromProbe, loadLatestProbe, runProbe } from "./probe";
-import { runUnifiedSession } from "./session";
-import { workspaceSnapshot } from "./workspace";
+import { extraLayersFromLastHit, loadLatestProbe, runProbe } from "./probe";
+import { formatSessionLine, runUnifiedSession } from "./session";
+import { autoCommitHarness, defaultEvalBase, evaluationSignature, workspaceSnapshot } from "./workspace";
 
 function option(name: string, argv = process.argv): string | undefined {
 	const index = argv.indexOf(name);
@@ -37,6 +36,13 @@ function option(name: string, argv = process.argv): string | undefined {
 
 function flag(name: string, argv = process.argv): boolean {
 	return argv.includes(name);
+}
+
+function evalBase(argv = process.argv): string | undefined {
+	return defaultEvalBase({
+		explicit: option("--base", argv),
+		envBase: process.env.SIF_BASE,
+	});
 }
 
 function failLedgerMeta(options: {
@@ -65,21 +71,21 @@ async function syncState(options?: { passK?: number; base?: string; fromProbes?:
 	const files = workspace.files;
 	const surfaces = await loadImpactSurfaces();
 	const impact = classifyFiles(files, surfaces);
-	const signature = sha256(impactSignature(impact, files));
+	const signature = evaluationSignature(impact, files);
 	const iphLock = await filesShaFromLock();
 	const existing = await loadState();
 	if (existing && existing.iphLock.commit === iphLock.commit) {
-		const inFlight = existing.next_required_action === "REPAIR"
+		const keepPlan = existing.next_required_action === "REPAIR"
 			|| existing.next_required_action === "REPLAY"
-			|| (existing.executedKeys.length > 0 && existing.next_required_action !== "DONE");
-		if (existing.delta.signature === signature || inFlight) {
+			|| existing.delta.signature === signature;
+		if (keepPlan) {
 			existing.harnessHead = workspace.head;
 			existing.workingTreeDirty = workspace.dirty;
 			await saveState(existing);
 			return existing;
 		}
 	}
-	const extraLayers = options?.fromProbes ? extraLayersFromProbe(await loadLatestProbe()) : [];
+	const extraLayers = options?.fromProbes ? await extraLayersFromLastHit() : [];
 	const planned = buildPlan(impact, { passK: options?.passK ?? 2, extraLayers });
 	const state: IterationState = {
 		schemaVersion: SCHEMA_VERSION,
@@ -316,11 +322,11 @@ async function replayState(argv: string[]): Promise<IterationState> {
 	if (state.next_required_action !== "REPLAY" && state.next_required_action !== "REPAIR") {
 		throw new Error(`replay requires REPAIR/REPLAY, found ${state.next_required_action}`);
 	}
-	const workspace = workspaceSnapshot(PROJECT_ROOT, { base: option("--base", argv) });
+	const workspace = workspaceSnapshot(PROJECT_ROOT, { base: evalBase(argv) });
 	const files = workspace.files;
 	const surfaces = await loadImpactSurfaces();
 	const impact = classifyFiles(files, surfaces);
-	const signature = sha256(impactSignature(impact, files));
+	const signature = evaluationSignature(impact, files);
 	state.harnessHead = workspace.head;
 	state.workingTreeDirty = workspace.dirty;
 	state.delta = {
@@ -354,7 +360,7 @@ async function iterateOneStep(argv: string[]): Promise<void> {
 	const dryRun = flag("--dry-run", argv);
 	const state = await syncState({
 		passK: Number(option("--pass-k", argv) ?? "2"),
-		base: option("--base", argv),
+		base: evalBase(argv),
 		fromProbes: flag("--from-probes", argv),
 	});
 	if (dryRun) {
@@ -402,25 +408,28 @@ async function iterate(argv: string[]): Promise<void> {
 		intervalMs: Math.max(2, Number(option("--interval", argv) ?? "8")) * 1000,
 		skipProbe: flag("--no-probe", argv),
 		skipCertify: flag("--no-certify", argv),
+		allowDirty: flag("--allow-dirty", argv),
 		probe: () => runProbe({
-			base: option("--base", argv),
+			base: evalBase(argv),
 			researchRoot: option("--research-root", argv),
 			force: flag("--force", argv),
 		}),
 		loadFramework: () => syncState({
 			passK: Number(option("--pass-k", argv) ?? "2"),
-			base: option("--base", argv),
+			base: evalBase(argv),
 			fromProbes: !flag("--no-from-probes", argv),
 		}),
 		replay: () => replayState(argv),
 		advance: state => advanceOne(state, argv),
 		certify: () => certifyNow(argv),
+		commit: flag("--no-auto-commit", argv) ? undefined : () => Promise.resolve(autoCommitHarness()),
 		emit: event => {
-			process.stdout.write(`${JSON.stringify(event, null, 2)}\n`);
+			if (flag("--json", argv)) process.stdout.write(`${JSON.stringify(event, null, 2)}\n`);
+			else process.stdout.write(`${formatSessionLine(event)}\n`);
 		},
 	});
 	const last = events.at(-1);
-	if (last?.action === "tune" || (last?.certify && !last.certify.ok)) process.exitCode = 2;
+	if (last?.action === "tune" || last?.action === "commit" || (last?.certify && !last.certify.ok)) process.exitCode = 2;
 }
 
 async function replay(argv: string[]): Promise<void> {
@@ -437,7 +446,7 @@ async function probeCommand(argv: string[]): Promise<void> {
 	const watch = flag("--watch", argv);
 	const intervalMs = Math.max(2, Number(option("--interval", argv) ?? "8")) * 1000;
 	const runOnce = async () => runProbe({
-		base: option("--base", argv),
+		base: evalBase(argv),
 		researchRoot: option("--research-root", argv),
 		force: flag("--force", argv),
 	});
